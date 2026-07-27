@@ -6289,6 +6289,24 @@ app.post("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/api/vault/disable", requireAuth, (req, res) => {
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  const { token } = req.body;
+
+  if (!vaultTokens[token] || vaultTokens[token].email !== email) {
+    return res.status(401).json({ error: "Invalid vault token" });
+  }
+
+  if (db.vaults && db.vaults[email]) {
+    db.vaults[email].isSetup = false;
+    db.vaults[email].passkeys = [];
+    writeDb(db);
+  }
+
+  res.json({ success: true });
+});
+
 app.post("/api/vault/move-in", requireAuth, (req, res) => {
   const { folder, name } = req.body;
   const email = req.user.email || req.user.uid;
