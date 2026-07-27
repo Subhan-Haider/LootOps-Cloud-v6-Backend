@@ -264,7 +264,7 @@
         item.style.cssText = 'padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;';
         item.innerHTML = `
           <div style="width:28px;height:28px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">
-            ${match.website ? `<img src="https://www.google.com/s2/favicons?domain=${match.website}&sz=32" style="width:16px;height:16px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+            ${match.website ? `<img src="https://www.google.com/s2/favicons?domain=${match.website}&sz=32" style="width:16px;height:16px;">` : ''}
             <svg style="display:${match.website ? 'none' : 'flex'};width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </div>
           <div style="flex:1;min-width:0;">
@@ -273,6 +273,16 @@
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m9 18 6-6-6-6"/></svg>
         `;
+        
+        const img = item.querySelector('img');
+        if (img) {
+          img.addEventListener('error', () => {
+            img.style.display = 'none';
+            if (img.nextElementSibling) {
+              img.nextElementSibling.style.display = 'flex';
+            }
+          });
+        }
         item.addEventListener('click', () => {
           fillCredentials(pwdInput, userInput, match);
           closeDropdown();
