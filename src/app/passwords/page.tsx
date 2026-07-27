@@ -917,7 +917,7 @@ export default function PasswordsPage() {
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
-                  <input list="category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Type or select new folder..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="text" list="category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Type or select new folder..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                   <datalist id="category-options">
                     {allCategories.map(cat => (
                       <option key={cat as string} value={cat as string} />
