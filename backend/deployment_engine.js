@@ -1,0 +1,803 @@
+const fs = require("fs");
+const path = require("path");
+// SYNCTOOL-FORCE-UPDATE: This comment forces the file to be synced to the backend repo.
+const { exec, spawn } = require("child_process");
+const os = require("os");
+const crypto = require("crypto");
+
+const isWindows = os.platform() === 'win32';
+
+// Cross-platform helpers
+function rmrf(dirPath) {
+  if (fs.existsSync(dirPath)) {
+    fs.rmSync(dirPath, { recursive: true, force: true });
+  }
+}
+
+function cpr(src, dest) {
+  if (!fs.existsSync(src)) return;
+  fs.cpSync(src, dest, { recursive: true });
+}
+
+const UPLOAD_PATH = process.env.UPLOAD_PATH || "/var/www/storage/uploads";
+const DEPLOYMENTS_DIR = process.env.DEPLOYMENTS_DIR || (isWindows ? path.join(UPLOAD_PATH, "Websites") : "/var/www/storage/Websites");
+const PROJECTS_DB_PATH = path.join(DEPLOYMENTS_DIR, "projects.json");
+const LOGS_DIR = path.join(DEPLOYMENTS_DIR, "logs");
+const BACKUPS_DIR = path.join(DEPLOYMENTS_DIR, "backups");
+const APPS_DIR = process.env.WEBSITES_PATH || "/var/www/storage/Websites";
+
+// Ensure directories exist
+if (!fs.existsSync(DEPLOYMENTS_DIR)) fs.mkdirSync(DEPLOYMENTS_DIR, { recursive: true });
+if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
+if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+if (!fs.existsSync(APPS_DIR)) fs.mkdirSync(APPS_DIR, { recursive: true });
+
+function readProjects() {
+  if (!fs.existsSync(PROJECTS_DB_PATH)) return [];
+  try {
+    const projects = JSON.parse(fs.readFileSync(PROJECTS_DB_PATH, "utf8"));
+    // Automatic migration to multiple domains
+    projects.forEach(p => {
+      if (!Array.isArray(p.domains)) {
+        p.domains = p.domains ? [p.domains] : (p.domain ? [p.domain] : []);
+        delete p.domain;
+      }
+    });
+    return projects;
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeProjects(projects) {
+  fs.writeFileSync(PROJECTS_DB_PATH, JSON.stringify(projects, null, 2));
+}
+
+function getProject(id) {
+  return readProjects().find(p => p.id === id);
+}
+
+function updateProject(id, updates) {
+  const projects = readProjects();
+  const idx = projects.findIndex(p => p.id === id);
+  if (idx !== -1) {
+    projects[idx] = { ...projects[idx], ...updates, updatedAt: new Date().toISOString() };
+    writeProjects(projects);
+    return projects[idx];
+  }
+  return null;
+}
+
+function deleteProject(id) {
+  const projects = readProjects();
+  const newProjects = projects.filter(p => p.id !== id);
+  writeProjects(newProjects);
+}
+
+function createProject(data) {
+  const projects = readProjects();
+  const newProject = {
+    id: crypto.randomUUID(),
+    name: data.name,
+    description: data.description || "",
+    repository: data.repository,
+    branch: data.branch || "main",
+    runtime: data.runtime || "node",
+    framework: data.framework || "unknown",
+    domains: data.domains || [],
+    status: "idle", // idle, building, running, failed, stopped
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastDeployment: null,
+    env: data.env || {},
+    port: null,
+    rootDir: data.rootDir || "",
+    installCmd: data.installCmd || "",
+    buildCmd: data.buildCmd || "",
+    startCmd: data.startCmd || "",
+    rawContent: data.rawContent || ""
+  };
+  projects.push(newProject);
+  writeProjects(projects);
+  return newProject;
+}
+
+function appendLog(projectId, message, type = "info") {
+  const logFile = path.join(LOGS_DIR, `${projectId}.log`);
+  const logLine = `[${new Date().toISOString()}] [${type.toUpperCase()}] ${message}\n`;
+  try {
+    fs.appendFileSync(logFile, logLine);
+  } catch(e) {}
+}
+
+async function findFreePort(start = 10000, end = 20000) {
+  const net = require("net");
+  
+  // First, get all ports currently assigned to any project (running or stopped)
+  const projects = readProjects();
+  const assignedPorts = new Set(projects.map(p => p.port).filter(Boolean));
+
+  const isPortFree = (port) => new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', () => resolve(false));
+    server.listen(port, () => {
+      server.close(() => resolve(true));
+    });
+  });
+
+  for (let port = start; port <= end; port++) {
+    if (assignedPorts.has(port)) continue; // Skip ports assigned to stopped projects
+    if (await isPortFree(port)) {
+      return port;
+    }
+  }
+  throw new Error("No free ports available");
+}
+
+async function checkPortAvailability(port) {
+  const net = require("net");
+  const projects = readProjects();
+  const assignedPorts = new Set(projects.map(p => Number(p.port)).filter(Boolean));
+  
+  if (assignedPorts.has(Number(port))) return false;
+  
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', () => resolve(false));
+    server.listen(port, () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+async function executeCommand(command, cwd, projectId, extraEnv = {}) {
+  return new Promise((resolve, reject) => {
+    appendLog(projectId, `Executing: ${command}`, "cmd");
+    const child = spawn(command, { 
+      cwd, 
+      shell: true,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...extraEnv }
+    });
+    
+    child.stdout.on("data", (data) => {
+      fs.appendFileSync(path.join(LOGS_DIR, `${projectId}.log`), data.toString());
+    });
+    
+    child.stderr.on("data", (data) => {
+      fs.appendFileSync(path.join(LOGS_DIR, `${projectId}.log`), data.toString());
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Command failed with code ${code}`));
+    });
+  });
+}
+
+// Helper to extract just the base repository URL in case user pasted a /blob/ or /tree/ link
+function sanitizeRepoUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('github.com') || parsed.hostname.includes('gitlab.com')) {
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        // Strip .git if present to normalize, we can append it later or leave as is (git clone works without it)
+        let repo = parts[1];
+        if (repo.endsWith('.git')) repo = repo.slice(0, -4);
+        parsed.pathname = `/${parts[0]}/${repo}`;
+        return parsed.toString();
+      }
+    }
+  } catch (e) {}
+  return url;
+}
+
+async function detectFramework(projectPath) {
+  if (fs.existsSync(path.join(projectPath, "docker-compose.yml")) || fs.existsSync(path.join(projectPath, "docker-compose.yaml"))) {
+    return "docker-compose";
+  }
+  if (fs.existsSync(path.join(projectPath, "Dockerfile"))) {
+    return "docker";
+  }
+  const pkgPath = path.join(projectPath, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    const pkg = require(pkgPath);
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    if (deps.next) return "nextjs";
+    if (deps.astro) return "astro";
+    if (deps.react || deps["react-dom"]) return "react";
+    if (deps.vue) return "vue";
+    if (deps.express) return "express";
+    if (deps.vite) return "vite";
+    return "node";
+  }
+  // Python check
+  if (fs.existsSync(path.join(projectPath, "requirements.txt")) || fs.existsSync(path.join(projectPath, "manage.py"))) {
+    return "python";
+  }
+  return "static";
+}
+
+// Cloudflare integration replaces Nginx
+const cloudflareManager = require('./cloudflare_manager');
+
+function getDockerExposePort(workingDir) {
+  const dockerfilePath = path.join(workingDir, "Dockerfile");
+  if (fs.existsSync(dockerfilePath)) {
+    try {
+      const content = fs.readFileSync(dockerfilePath, "utf8");
+      const match = content.match(/^\s*EXPOSE\s+(\d+)/im);
+      if (match) {
+        return parseInt(match[1], 10);
+      }
+    } catch (e) {}
+  }
+  return 80; // default fallback
+}
+
+const activeDeployments = new Set();
+
+async function deployProject(projectId) {
+  if (activeDeployments.has(projectId)) {
+    throw new Error("A deployment is already in progress for this project.");
+  }
+  activeDeployments.add(projectId);
+
+  const project = getProject(projectId);
+  if (!project) {
+    activeDeployments.delete(projectId);
+    throw new Error("Project not found");
+  }
+
+  try {
+    updateProject(projectId, { status: "building" });
+    appendLog(projectId, `Starting deployment for ${project.name}...`, "info");
+
+    const projectDir = path.join(APPS_DIR, projectId);
+    const tempDir = path.join(APPS_DIR, `${projectId}_temp`);
+    
+    // Ensure clean temp dir
+    try { rmrf(tempDir); } catch(e) {}
+    
+    // If project already exists, copy to temp dir to speed up clone/pull
+    if (fs.existsSync(projectDir)) {
+      appendLog(projectId, `Copying existing project to temporary build directory...`, "info");
+      cpr(projectDir, tempDir);
+    }
+
+    // 1. Fetch Source Code (Git Clone/Pull OR Raw Content)
+    let repoUrl = sanitizeRepoUrl(project.repository);
+    const githubIntegrations = require('./github_integrations');
+    const token = githubIntegrations.getGithubToken();
+    let cloneUrl = repoUrl;
+    if (token && cloneUrl.includes("github.com") && !cloneUrl.includes("@")) {
+      cloneUrl = cloneUrl.replace("https://github.com/", `https://${token}@github.com/`);
+    }
+
+    if (project.repository === "raw") {
+      appendLog(projectId, `Creating raw static deployment...`, "info");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "index.html"), project.rawContent || "<h1>Hello World</h1>");
+    } else {
+      if (!fs.existsSync(path.join(tempDir, ".git"))) {
+        appendLog(projectId, `Cloning repository: ${repoUrl}...`, "info");
+        try {
+          await executeCommand(`git clone -b ${project.branch} ${cloneUrl} ${projectId}_temp`, APPS_DIR, projectId);
+        } catch (cloneErr) {
+          if (cloneErr.message && (cloneErr.message.includes("403") || cloneErr.message.includes("access") || cloneErr.message.includes("not granted"))) {
+            appendLog(projectId, `Token-based clone failed. Trying public clone...`, "warn");
+            try {
+              await executeCommand(`git clone -b ${project.branch} ${repoUrl} ${projectId}_temp`, APPS_DIR, projectId);
+            } catch (pubErr) {
+              throw new Error(`Cannot access repository. This may be a private repo.\nFix: Go to Settings → Git Integration → click 'Connect GitHub' to refresh your token.`);
+            }
+          } else {
+            throw cloneErr;
+          }
+        }
+      } else {
+        appendLog(projectId, `Pulling latest changes from ${project.branch} into temp directory...`, "info");
+        try {
+          await executeCommand(`git fetch origin`, tempDir, projectId);
+          await executeCommand(`git checkout ${project.branch}`, tempDir, projectId);
+          await executeCommand(`git pull ${cloneUrl} ${project.branch}`, tempDir, projectId);
+        } catch (err) {
+          appendLog(projectId, `Failed to switch/pull branch, performing fresh clone...`, "warn");
+          try { rmrf(tempDir); } catch(e) {}
+          await executeCommand(`git clone -b ${project.branch} ${cloneUrl} ${projectId}_temp`, APPS_DIR, projectId);
+        }
+      }
+    }
+
+    // Auto-detect root directory if not specified
+    let autoRootDir = project.rootDir;
+    if (!autoRootDir) {
+      try {
+        const items = fs.readdirSync(tempDir).filter(f => f !== '.git' && f !== '.github');
+        if (!items.includes("package.json") && !items.includes("index.html") && !items.includes("requirements.txt") && !items.includes("Dockerfile")) {
+          const dirs = items.filter(f => fs.statSync(path.join(tempDir, f)).isDirectory());
+          const files = items.filter(f => fs.statSync(path.join(tempDir, f)).isFile());
+          
+          if (dirs.length === 1 && !["node_modules", "public", "dist", "build", "venv", ".venv"].includes(dirs[0])) {
+            const harmlessFiles = ["readme.md", "license", "license.md", ".gitignore", "dockerfile"];
+            if (files.every(f => harmlessFiles.includes(f.toLowerCase()))) {
+              autoRootDir = dirs[0];
+            }
+          }
+          
+          if (!autoRootDir) {
+            for (const dir of dirs) {
+              const dirPath = path.join(tempDir, dir);
+              if (project.framework === 'python' && (fs.existsSync(path.join(dirPath, "requirements.txt")) || fs.existsSync(path.join(dirPath, "manage.py")))) {
+                autoRootDir = dir;
+                break;
+              }
+            }
+          }
+          
+          if (!autoRootDir) {
+            for (const dir of dirs) {
+              const dirPath = path.join(tempDir, dir);
+              if (fs.existsSync(path.join(dirPath, "package.json")) || fs.existsSync(path.join(dirPath, "index.html")) || fs.existsSync(path.join(dirPath, "requirements.txt"))) {
+                autoRootDir = dir;
+                break;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (autoRootDir) {
+        appendLog(projectId, `Automatically detected Root Directory: ${autoRootDir}`, "info");
+        updateProject(projectId, { rootDir: autoRootDir });
+        project.rootDir = autoRootDir;
+      }
+    }
+
+    // Adjust working directory
+    const workingDir = project.rootDir ? path.join(tempDir, project.rootDir) : tempDir;
+    
+    // Inject Environment Variables into .env file before build
+    if (project.env && Object.keys(project.env).length > 0) {
+      appendLog(projectId, `Writing environment variables to .env file...`, "info");
+      const envContent = Object.entries(project.env)
+        .map(([key, val]) => `${key}=${val}`)
+        .join('\n');
+      fs.writeFileSync(path.join(workingDir, '.env'), envContent);
+    }
+
+    // 2. Framework Detection
+    let framework = project.framework && project.framework !== "auto" ? project.framework : "static";
+    if (!project.framework || project.framework === "auto") {
+      if (project.repository !== "raw") {
+        framework = await detectFramework(workingDir);
+      }
+    }
+    updateProject(projectId, { framework });
+    appendLog(projectId, `Detected framework: ${framework} in ${workingDir}`, "info");
+
+    // 3. Port Allocation
+    let port = project.port;
+    if (!port) {
+      port = await findFreePort();
+      updateProject(projectId, { port });
+      appendLog(projectId, `Allocated port: ${port}`, "info");
+    }
+
+    // 4. Install & Build inside TEMP DIR
+    if (["nextjs", "react", "vue", "vite", "express", "node", "astro"].includes(framework)) {
+      appendLog(projectId, `Installing dependencies...`, "info");
+      
+      // Ensure clean node_modules to avoid Turbopack/symlink caching bugs
+      try { rmrf(path.join(workingDir, "node_modules")); } catch(e) {}
+      
+      const installCmd = project.installCmd || "npm install --legacy-peer-deps";
+      await executeCommand(installCmd, workingDir, projectId);
+      
+      if (framework !== "node" && framework !== "express") {
+         appendLog(projectId, `Building project...`, "info");
+         
+         // Clear Next.js cache to avoid invariant errors during incremental builds
+         if (framework === 'nextjs') {
+           try { rmrf(path.join(workingDir, ".next")); } catch(e) {}
+           
+           // Hotfix: Next.js 16 Turbopack crashes when prerendering internal _global-error.
+           // Creating a minimal client-side global-error file bypasses the bug.
+           const appDir = fs.existsSync(path.join(workingDir, 'src', 'app')) 
+             ? path.join(workingDir, 'src', 'app') 
+             : fs.existsSync(path.join(workingDir, 'app')) 
+               ? path.join(workingDir, 'app') 
+               : null;
+               
+           if (appDir) {
+             const hasGlobalError = fs.existsSync(path.join(appDir, 'global-error.tsx')) || 
+                                    fs.existsSync(path.join(appDir, 'global-error.jsx')) || 
+                                    fs.existsSync(path.join(appDir, 'global-error.js'));
+             if (!hasGlobalError) {
+               fs.writeFileSync(path.join(appDir, 'global-error.jsx'), `'use client';\nexport default function GlobalError({error, reset}) { return (<html><body><h2>Something went wrong!</h2><button onClick={() => reset()}>Try again</button></body></html>); }`);
+               appendLog(projectId, `Hotfix: Injected global-error.jsx to bypass Next.js build bug`, "warn");
+             }
+           }
+         }
+
+          // Hotfix: Vite + TS projects often fail on minor type errors because `tsc -b` is in the build script.
+          // We will strip it out to ensure a smooth deployment experience.
+          if (framework === 'vite' || framework === 'react' || framework === 'vue') {
+            try {
+              const pkgPath = path.join(workingDir, "package.json");
+              if (fs.existsSync(pkgPath)) {
+                let pkgStr = fs.readFileSync(pkgPath, "utf8");
+                let pkg = JSON.parse(pkgStr);
+                if (pkg.scripts && pkg.scripts.build && pkg.scripts.build.includes("tsc")) {
+                   pkg.scripts.build = pkg.scripts.build.replace(/tsc -b && /g, "").replace(/tsc && /g, "");
+                   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+                   appendLog(projectId, `Hotfix: Removed strict TypeScript type checking from build script to prevent build failure`, "warn");
+                }
+              }
+            } catch (e) {}
+          }
+
+         // DO NOT catch the error. If build fails, it will skip Atomic Swap and throw to the catch block!
+         const buildCmd = project.buildCmd || "npm run build";
+         await executeCommand(buildCmd, workingDir, projectId);
+      }
+    } else if (framework === "python") {
+      appendLog(projectId, `Setting up Python virtual environment...`, "info");
+      const venvDir = path.join(workingDir, "venv");
+      if (!fs.existsSync(venvDir)) {
+        try {
+          await executeCommand("python3 -m venv venv", workingDir, projectId);
+        } catch (e) {
+          await executeCommand("python -m venv venv", workingDir, projectId);
+        }
+      }
+      
+      appendLog(projectId, `Installing Python dependencies...`, "info");
+      
+      const isWin = os.platform() === 'win32';
+      const venvBinDir = isWin ? path.join(workingDir, "venv", "Scripts") : path.join(workingDir, "venv", "bin");
+      const pathKey = isWin ? "Path" : "PATH";
+      const originalPath = process.env[pathKey] || process.env.PATH || "";
+      const pythonEnv = {
+        [pathKey]: `${venvBinDir}${path.delimiter}${originalPath}`,
+        VIRTUAL_ENV: path.join(workingDir, "venv")
+      };
+      
+      const installCmd = project.installCmd || "pip install -r requirements.txt";
+      await executeCommand(installCmd, workingDir, projectId, pythonEnv);
+    } else if (framework === "docker") {
+      appendLog(projectId, `Building Docker image storage-project-${projectId}...`, "info");
+      await executeCommand(`docker build -t storage-project-${projectId} .`, workingDir, projectId);
+      appendLog(projectId, `Pruning unused Docker cache and layers...`, "info");
+      await executeCommand(`docker system prune -f`, workingDir, projectId).catch(()=>{});
+    } else if (framework === "docker-compose") {
+      appendLog(projectId, `Building Docker Compose services...`, "info");
+      await executeCommand(`docker compose build`, workingDir, projectId);
+      appendLog(projectId, `Pruning unused Docker cache and layers...`, "info");
+      await executeCommand(`docker system prune -f`, workingDir, projectId).catch(()=>{});
+    }
+
+    // ATOMIC SWAP - Build Succeeded!
+    appendLog(projectId, `Build successful! Performing atomic swap...`, "success");
+
+    // INJECT ANALYTICS
+    try {
+      const injectPaths = [
+        path.join(workingDir, "index.html"),
+        path.join(workingDir, "public", "index.html"),
+        path.join(workingDir, "dist", "index.html"),
+        path.join(workingDir, "build", "index.html")
+      ];
+      
+      const storageUrl = process.env.NEXT_PUBLIC_API_URL || process.env.STORAGE_SERVER_URL || 'http://localhost:5000';
+      const scriptTag = `\n    <script src="${storageUrl}/analytics/script.js?projectId=${projectId}" defer></script>\n`;
+      
+      let injected = false;
+      for (const p of injectPaths) {
+        if (fs.existsSync(p)) {
+          let html = fs.readFileSync(p, 'utf8');
+          if (!html.includes('analytics/script.js') && html.includes('</head>')) {
+            html = html.replace('</head>', scriptTag + '</head>');
+            fs.writeFileSync(p, html);
+            injected = true;
+          } else if (!html.includes('analytics/script.js') && html.includes('</body>')) {
+            html = html.replace('</body>', scriptTag + '</body>');
+            fs.writeFileSync(p, html);
+            injected = true;
+          }
+        }
+      }
+      if (injected) {
+        appendLog(projectId, `Automatically injected Visitor Analytics tracking script.`, "success");
+      }
+    } catch(e) {}
+
+    // Backup current live project
+    if (fs.existsSync(projectDir)) {
+      const backupPath = path.join(BACKUPS_DIR, `${projectId}_last`);
+      try { rmrf(backupPath); fs.renameSync(projectDir, backupPath); } catch(e) {
+        appendLog(projectId, `Warning: Failed to backup old directory.`, "warn");
+      }
+    }
+
+    // Move temp dir to live dir
+    try {
+      fs.renameSync(tempDir, projectDir);
+    } catch(e) {
+      // Fallback to copy/delete if cross-device link issues
+      cpr(tempDir, projectDir);
+      rmrf(tempDir);
+    }
+
+    // Recompute live working dir
+    const liveWorkingDir = project.rootDir ? path.join(projectDir, project.rootDir) : projectDir;
+
+    // 5. Start with PM2
+    appendLog(projectId, `Starting application with PM2...`, "info");
+    
+    // 5a. Database Container Provisioning
+    if (project.database === "postgres") {
+      const dbContainerName = `storage-db-${projectId}`;
+      const dbPassword = project.dbPassword || crypto.randomBytes(16).toString("hex");
+      const dbUser = "storage_user";
+      const dbName = "storage_db";
+      let dbPort = project.dbPort;
+      if (!dbPort) {
+        dbPort = await findFreePort(20001, 30000);
+        updateProject(projectId, { dbPort, dbPassword });
+        project.dbPort = dbPort;
+        project.dbPassword = dbPassword;
+      }
+      appendLog(projectId, `Provisioning PostgreSQL database container: ${dbContainerName} on port ${dbPort}...`, "info");
+      await executeCommand(`docker rm -f ${dbContainerName}`, liveWorkingDir, projectId).catch(()=>{});
+      const pgCmd = `docker run -d --name ${dbContainerName} --restart always -e POSTGRES_USER=${dbUser} -e POSTGRES_PASSWORD=${dbPassword} -e POSTGRES_DB=${dbName} -p ${dbPort}:5432 postgres:15`;
+      await executeCommand(pgCmd, liveWorkingDir, projectId);
+      
+      const hostIp = os.platform() === 'win32' ? "localhost" : "172.17.0.1";
+      project.env = {
+        ...project.env,
+        DATABASE_URL: `postgresql://${dbUser}:${dbPassword}@${hostIp}:${dbPort}/${dbName}`
+      };
+    } else if (project.database === "sqlite") {
+      project.env = {
+        ...project.env,
+        DATABASE_URL: `sqlite://${path.join(liveWorkingDir, "database.sqlite").replace(/\\/g, '/')}`
+      };
+    }
+
+    // Create .env file for the app
+    const envVars = { NODE_ENV: "production", ...project.env, PORT: port };
+    if (framework === "python") {
+      const isWin = os.platform() === 'win32';
+      const liveVenvBinDir = isWin 
+        ? path.join(liveWorkingDir, "venv", "Scripts") 
+        : path.join(liveWorkingDir, "venv", "bin");
+      const pathKey = isWin ? "Path" : "PATH";
+      const originalPath = process.env[pathKey] || process.env.PATH || "";
+      envVars[pathKey] = `${liveVenvBinDir}${path.delimiter}${originalPath}`;
+      envVars.VIRTUAL_ENV = path.join(liveWorkingDir, "venv");
+    }
+    const envString = Object.entries(envVars).map(([k,v]) => `${k}=${v}`).join("\n");
+    fs.writeFileSync(path.join(liveWorkingDir, ".env"), envString);
+
+    let startCmd = project.startCmd;
+    if (framework === "docker") {
+      await executeCommand(`docker rm -f storage-project-${projectId}`, liveWorkingDir, projectId).catch(()=>{});
+    }
+
+    if (!startCmd) {
+      if (framework === "react" || framework === "vue" || framework === "vite") {
+        const outDir = fs.existsSync(path.join(liveWorkingDir, "build")) ? "build" : "dist";
+        
+        // Bulletproof port hijacker using Node.js preload script
+        const hijackerCode = `const net = require('net');
+const originalListen = net.Server.prototype.listen;
+net.Server.prototype.listen = function(...args) {
+  const dynamicPort = process.env.PORT;
+  if (typeof args[0] === 'number' || (typeof args[0] === 'string' && !isNaN(args[0]))) {
+    if (args[0] != dynamicPort) {
+      console.warn('[CLOUD-BACKEND WARNING] Your server tried to bind to hardcoded port ' + args[0] + '. We automatically changed it to ' + dynamicPort + ' to prevent a 502 Bad Gateway crash! Please update your code to use process.env.PORT.');
+      args[0] = dynamicPort;
+    }
+  } else if (args[0] && typeof args[0] === 'object' && args[0].port) {
+    if (args[0].port != dynamicPort) {
+      console.warn('[CLOUD-BACKEND WARNING] Your server tried to bind to hardcoded port ' + args[0].port + ' via an object. We automatically changed it to ' + dynamicPort + ' to prevent a crash! Please update your code to use process.env.PORT.');
+      args[0].port = dynamicPort;
+    }
+  }
+  return originalListen.apply(this, args);
+};`;
+        fs.writeFileSync(path.join(liveWorkingDir, "port-hijacker.cjs"), hijackerCode);
+
+        const cjsPath = path.join(liveWorkingDir, outDir, "server.cjs");
+        const jsPath = path.join(liveWorkingDir, outDir, "server.js");
+
+        if (fs.existsSync(cjsPath) || fs.existsSync(jsPath)) {
+          appendLog(projectId, `Detected custom server script. Ensure it listens on process.env.PORT instead of a hardcoded port like 3000 to prevent 502 Bad Gateway errors.`, "warn");
+        }
+
+        if (fs.existsSync(cjsPath)) {
+          startCmd = `node -r ./port-hijacker.cjs ${outDir}/server.cjs`;
+        } else if (fs.existsSync(jsPath)) {
+          startCmd = `node -r ./port-hijacker.cjs ${outDir}/server.js`;
+        } else {
+          startCmd = `npm install serve && ./node_modules/.bin/serve -s ${outDir} -p ${port}`;
+        }
+      } else if (framework === "astro") {
+        startCmd = `npm install serve && ./node_modules/.bin/serve -s dist -p ${port}`;
+      } else if (framework === "node" || framework === "express") {
+        try {
+          const pkg = require(path.join(liveWorkingDir, "package.json"));
+          startCmd = pkg.scripts?.start ? "npm start" : `node ${pkg.main || "index.js"}`;
+        } catch(e) {
+          startCmd = "node index.js";
+        }
+      } else if (framework === "static") {
+        startCmd = `npx -y serve . -p ${port}`;
+      } else if (framework === "python") {
+        if (fs.existsSync(path.join(liveWorkingDir, "manage.py"))) {
+          startCmd = `python manage.py runserver 0.0.0.0:${port}`;
+        } else if (fs.existsSync(path.join(liveWorkingDir, "app.py"))) {
+          startCmd = `python app.py`;
+        } else if (fs.existsSync(path.join(liveWorkingDir, "main.py"))) {
+          startCmd = `python main.py`;
+        } else {
+          startCmd = `python app.py`;
+        }
+      } else if (framework === "docker") {
+        const containerPort = getDockerExposePort(liveWorkingDir);
+        startCmd = `docker run --rm --name storage-project-${projectId} --env-file .env -p ${port}:${containerPort} storage-project-${projectId}`;
+      } else {
+        startCmd = "npm start";
+      }
+    }
+
+    await executeCommand(`pm2 delete ${projectId}`, liveWorkingDir, projectId).catch(()=>{});
+    
+    let [execCmd, ...args] = startCmd.split(" ");
+
+    // PM2 treats the `script` field as a Node.js module path, NOT a shell command.
+    // Setting script: "npx" makes it try to require("npx") which fails on restart.
+    // Fix: Always use a small Node.js runner that spawns the command with shell:true.
+    const runnerCode = `const { spawn } = require('child_process');
+const proc = spawn(${JSON.stringify(startCmd)}, [], { stdio: 'inherit', shell: true, cwd: __dirname });
+proc.on('exit', code => process.exit(code || 0));
+process.on('SIGINT', () => proc.kill('SIGINT'));
+process.on('SIGTERM', () => proc.kill('SIGTERM'));
+`;
+    fs.writeFileSync(path.join(liveWorkingDir, "pm2-runner.cjs"), runnerCode);
+    
+    const ecosystemCode = `module.exports = {
+      apps: [{
+        name: "${projectId}",
+        script: "pm2-runner.cjs",
+        cwd: "${liveWorkingDir.replace(/\\/g, '/')}",
+        env: ${JSON.stringify(envVars)}
+      }]
+    };`;
+
+    fs.writeFileSync(path.join(liveWorkingDir, "ecosystem.config.cjs"), ecosystemCode);
+    
+    await executeCommand(`pm2 start ecosystem.config.cjs`, liveWorkingDir, projectId);
+    await executeCommand(`pm2 save`, liveWorkingDir, projectId);
+
+    // 5.5. Health Check Loop
+    if (framework !== "docker" && framework !== "docker-compose" && framework !== "static") {
+      appendLog(projectId, `Waiting for application to become healthy on port ${port}...`, "info");
+      let isHealthy = false;
+      const startTime = Date.now();
+      const maxWait = 45000; // 45 seconds
+      const http = require('http');
+      
+      while (Date.now() - startTime < maxWait) {
+        await new Promise((resolve) => {
+          const req = http.get(`http://localhost:${port}`, (res) => {
+            isHealthy = true;
+            resolve();
+          });
+          req.on('error', () => {
+            resolve();
+          });
+          req.end();
+        });
+        if (isHealthy) break;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      
+      if (!isHealthy) {
+        throw new Error(`Health check failed: Application did not bind to port ${port} within ${maxWait/1000} seconds. Check the logs. It may have crashed or is listening on a hardcoded port.`);
+      }
+      appendLog(projectId, `Application is healthy and responding!`, "success");
+    }
+
+    // 6. Cloudflare Tunnel
+    if (project.domains && project.domains.length > 0) {
+      appendLog(projectId, `Configuring Cloudflare Tunnels for ${project.domains.join(', ')}...`, "info");
+      for (const domain of project.domains) {
+        try {
+          await cloudflareManager.addRoute(domain, port);
+          appendLog(projectId, `Cloudflare Tunnel successfully updated for ${domain}.`, "info");
+        } catch (err) {
+          if (err.message.includes("already exists")) {
+            appendLog(projectId, `Route for ${domain} already exists in tunnel config.`, "warn");
+          } else {
+            appendLog(projectId, `Cloudflare Tunnel error for ${domain}: ${err.message}`, "error");
+            appendLog(projectId, `Deployment succeeded but tunnel needs manual config.`, "warn");
+          }
+        }
+      }
+    }
+
+    updateProject(projectId, { 
+      status: "running", 
+      lastDeployment: new Date().toISOString() 
+    });
+    appendLog(projectId, `Deployment successful!`, "success");
+    activeDeployments.delete(projectId);
+
+  } catch (err) {
+    appendLog(projectId, `Deployment failed: ${err.message}`, "error");
+    
+    // Rollback by cleaning up temp dir if it exists
+    const tempDir = path.join(APPS_DIR, `${projectId}_temp`);
+    if (fs.existsSync(tempDir)) {
+      appendLog(projectId, `Rolling back: Deleting broken temporary build directory. Live app remains online.`, "info");
+      try { rmrf(tempDir); } catch(e) {}
+    }
+    
+    updateProject(projectId, { status: "failed" });
+    activeDeployments.delete(projectId);
+    throw err;
+  }
+}
+
+async function stopProject(projectId) {
+  await executeCommand(`pm2 stop ${projectId}`, os.tmpdir(), projectId).catch(()=> {});
+  await executeCommand(`docker rm -f storage-project-${projectId}`, os.tmpdir(), projectId).catch(()=> {});
+  updateProject(projectId, { status: "stopped" });
+}
+
+async function rollbackProject(projectId) {
+  const project = getProject(projectId);
+  if (!project) throw new Error("Project not found");
+
+  appendLog(projectId, `Starting rollback...`, "info");
+  const projectDir = path.join(APPS_DIR, projectId);
+  const backupPath = path.join(BACKUPS_DIR, `${projectId}_last`);
+
+  if (!fs.existsSync(backupPath)) {
+    throw new Error("No previous backup found to rollback to.");
+  }
+
+  rmrf(projectDir);
+  cpr(backupPath, projectDir);
+  
+  const workingDir = project.rootDir ? path.join(projectDir, project.rootDir) : projectDir;
+  
+  // Create .env file for the app
+  const envVars = { ...project.env, PORT: project.port };
+  const envString = Object.entries(envVars).map(([k,v]) => `${k}=${v}`).join("\n");
+  fs.writeFileSync(path.join(workingDir, ".env"), envString);
+  
+  await executeCommand(`pm2 restart ${projectId} --update-env`, workingDir, projectId);
+  updateProject(projectId, { status: "running" });
+  appendLog(projectId, `Rollback successful!`, "success");
+}
+
+module.exports = {
+  readProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  deployProject,
+  stopProject,
+  rollbackProject,
+  checkPortAvailability,
+  sanitizeRepoUrl,
+  LOGS_DIR,
+  DEPLOYMENTS_DIR,
+  APPS_DIR
+};

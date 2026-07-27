@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "LootOps Cloud",
+    "slug": "lootops-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.lootops.mobile",
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a",
+        "foregroundImage": "./assets/logo.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "plugins": [
+      "react-native-document-scanner-plugin",
+      "@react-native-google-signin/google-signin"
+    ]
+  }
+}

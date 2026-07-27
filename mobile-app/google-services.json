@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "516984614987",
+    "project_id": "storage-server-2025",
+    "storage_bucket": "storage-server-2025.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:516984614987:android:5cd28d64fbbb518c125dce",
+        "android_client_info": {
+          "package_name": "com.lootops.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDiXagzM7twaDdcrKS9q6PpI77wfJ9DtRM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Strictly verify the user is one of the registered admins
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == 'setupg98@gmail.com' || 
+         request.auth.token.email == 'setupg963@gmail.com');
+    }
+
+    match /{document=**} {
+      // Absolute lockdown: Only admins can read or write ANY document
+      allow read, write: if isAdmin();
+    }
+  }
+}
