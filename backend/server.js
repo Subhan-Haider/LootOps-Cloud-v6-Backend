@@ -6170,7 +6170,7 @@ app.get("/api/vault/webauthn/register", requireAuth, async (req, res) => {
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: user.id,
+    userID: new Uint8Array(Buffer.from(user.id)),
     userName: user.name,
     attestationType: 'none',
     excludeCredentials: userPasskeys.map(pk => ({
@@ -6301,8 +6301,12 @@ app.post("/api/vault/disable", requireAuth, (req, res) => {
   const email = req.user.email || req.user.uid;
   const { token } = req.body;
 
-  if (!vaultTokens[token] || vaultTokens[token].email !== email) {
-    return res.status(401).json({ error: "Invalid vault token" });
+  const userPasskeys = db.vaults?.[email]?.passkeys || [];
+
+  if (userPasskeys.length > 0) {
+    if (!vaultTokens[token] || vaultTokens[token].email !== email) {
+      return res.status(401).json({ error: "Invalid vault token" });
+    }
   }
 
   if (db.vaults && db.vaults[email]) {

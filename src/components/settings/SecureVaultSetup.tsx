@@ -100,15 +100,24 @@ export function SecureVaultSetup() {
     setLoading(true);
     setError("");
     try {
-      const options = await api.request("/api/vault/webauthn/authenticate", { method: "GET" });
-      const asseResp = await startAuthentication({ optionsJSON: options });
+      let verifyRes = null;
+      try {
+        const options = await api.request("/api/vault/webauthn/authenticate", { method: "GET" });
+        const asseResp = await startAuthentication({ optionsJSON: options });
+        verifyRes = await api.request("/api/vault/webauthn/authenticate", {
+          method: "POST",
+          body: JSON.stringify(asseResp),
+        });
+      } catch (authErr: any) {
+        if (authErr.message === "No passkeys registered") {
+          // Skip auth if they don't have passkeys (legacy PIN state)
+          verifyRes = { success: true, token: null };
+        } else {
+          throw authErr;
+        }
+      }
 
-      const verifyRes = await api.request("/api/vault/webauthn/authenticate", {
-        method: "POST",
-        body: JSON.stringify(asseResp),
-      });
-
-      if (verifyRes.success) {
+      if (verifyRes?.success) {
         await api.request("/api/vault/disable", { method: "POST", body: JSON.stringify({ token: verifyRes.token }) });
         setVaultEnabled(false);
         setStep("idle");
