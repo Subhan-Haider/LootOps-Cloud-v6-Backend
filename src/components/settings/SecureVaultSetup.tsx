@@ -90,7 +90,7 @@ export function SecureVaultSetup() {
       if (err.name === 'NotAllowedError') {
         setError("Setup cancelled. You must register a passkey to secure your vault.");
       } else {
-        setError("Failed to register passkey. Ensure your device supports Windows Hello / Touch ID.");
+        setError(`Failed to register passkey: ${err.message || err.name || "Unknown error"}`);
       }
       setStep("verify_email");
     }
