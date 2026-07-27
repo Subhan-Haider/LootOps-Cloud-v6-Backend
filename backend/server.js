@@ -5825,6 +5825,10 @@ app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "admin", "index.html"));
 });
 
+app.get("/favicon.ico", (req, res) => {
+  res.sendFile(path.join(__dirname, "admin", "favicon.png"));
+});
+
 app.post("/api/admin/auth", (req, res) => {
   const { apiKey } = req.body;
   if (apiKey !== API_KEY) {
