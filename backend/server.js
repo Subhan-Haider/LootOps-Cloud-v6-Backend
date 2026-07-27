@@ -3832,6 +3832,41 @@ app.delete("/admin/settings/origins", requireAuth, (req, res) => {
   res.json({ success: true, allowedOrigins: db.settings?.allowedOrigins || [] });
 });
 
+app.get("/admin/settings/upload-path", requireAuth, (req, res) => {
+  res.json({ uploadPath: UPLOAD_PATH });
+});
+
+app.post("/admin/settings/upload-path", requireAuth, (req, res) => {
+  const { uploadPath } = req.body;
+  if (!uploadPath || typeof uploadPath !== 'string') {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  try {
+    const envPath = path.join(__dirname, '.env');
+    let envContent = '';
+    if (fs.existsSync(envPath)) {
+      envContent = fs.readFileSync(envPath, 'utf8');
+    }
+
+    // Replace or add UPLOAD_PATH
+    const uploadPathRegex = /^UPLOAD_PATH=.*$/m;
+    if (uploadPathRegex.test(envContent)) {
+      envContent = envContent.replace(uploadPathRegex, `UPLOAD_PATH="${uploadPath.replace(/\\/g, '\\\\')}"`);
+    } else {
+      envContent += `\nUPLOAD_PATH="${uploadPath.replace(/\\/g, '\\\\')}"\n`;
+    }
+
+    fs.writeFileSync(envPath, envContent.trim() + '\n');
+    logEvent("UPLOAD_PATH_UPDATED", { newPath: uploadPath });
+
+    res.json({ success: true, message: "Upload path updated. Please reboot the server to apply changes." });
+  } catch (err) {
+    console.error("Failed to update upload path:", err);
+    res.status(500).json({ error: "Failed to update .env file" });
+  }
+});
+
 app.post("/admin/settings/base-url", requireAuth, (req, res) => {
   const { customBaseUrl } = req.body;
   const db = readDb();

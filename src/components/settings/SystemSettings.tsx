@@ -16,6 +16,8 @@ export function SystemSettings() {
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [savingDiscordWebhook, setSavingDiscordWebhook] = useState(false);
+  const [uploadPath, setUploadPath] = useState("");
+  const [savingUploadPath, setSavingUploadPath] = useState(false);
   
   const [newOrigin, setNewOrigin] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -55,10 +57,26 @@ export function SystemSettings() {
       setNotificationPreferences(data.notificationPreferences ?? { onUpload: true, onDelete: true, onLogin: true, onDownload: false, onShare: true });
       setCustomBaseUrl(data.customBaseUrl || "");
       setDiscordWebhookUrl(data.discordWebhookUrl || "");
+
+      const pathData = await api.systemSettings.getUploadPath();
+      setUploadPath(pathData.uploadPath || "");
     } catch {
       error("Failed to load system settings");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveUploadPath = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingUploadPath(true);
+    try {
+      const data = await api.systemSettings.setUploadPath(uploadPath);
+      success(data.message || "Upload path saved! Please reboot the server.");
+    } catch {
+      error("Failed to save upload path");
+    } finally {
+      setSavingUploadPath(false);
     }
   };
 
@@ -482,23 +500,54 @@ export function SystemSettings() {
             Leave blank to use the default relative paths or the current browser domain.
           </p>
 
-          <form onSubmit={handleSaveBaseUrl} className="mt-auto pt-4 flex flex-col gap-3">
+          <form onSubmit={handleSaveBaseUrl} className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
-              placeholder="https://storage.my-domain.com"
               value={customBaseUrl}
               onChange={(e) => setCustomBaseUrl(e.target.value)}
-              disabled={savingBaseUrl}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400 disabled:opacity-50 transition-all"
+              placeholder="e.g. https://storage.yourdomain.com"
+              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <button
               type="submit"
               disabled={savingBaseUrl}
-              className="flex items-center justify-center gap-1.5 w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
-              {savingBaseUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Base URL"}
+              {savingBaseUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
             </button>
           </form>
+        </div>
+      </div>
+
+      {/* Server Storage Path */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 lg:col-span-1">
+        <div className="mb-4">
+          <h3 className="font-semibold text-gray-900">Server Storage Path</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Absolute path on your server where files and the database are saved.
+          </p>
+        </div>
+        <form onSubmit={handleSaveUploadPath} className="flex flex-col gap-3">
+          <input
+            type="text"
+            value={uploadPath}
+            onChange={(e) => setUploadPath(e.target.value)}
+            placeholder="e.g. /var/www/storage/uploads"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            type="submit"
+            disabled={savingUploadPath}
+            className="flex items-center justify-center gap-1.5 w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {savingUploadPath ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Path"}
+          </button>
+        </form>
+        <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-[11px] text-amber-700 leading-relaxed">
+            <strong>Warning:</strong> Changing this path requires a server reboot. If the new directory is empty, a fresh database will be created. Move your files manually if needed!
+          </p>
         </div>
       </div>
 

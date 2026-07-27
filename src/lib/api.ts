@@ -444,6 +444,14 @@ export const api = {
       const { data } = await apiInstance.get("/admin/settings");
       return data;
     },
+    getUploadPath: async (): Promise<{ uploadPath: string }> => {
+      const { data } = await apiInstance.get("/admin/settings/upload-path");
+      return data;
+    },
+    setUploadPath: async (uploadPath: string): Promise<{ success: boolean; message: string }> => {
+      const { data } = await apiInstance.post("/admin/settings/upload-path", { uploadPath });
+      return data;
+    },
     addOrigin: async (origin: string): Promise<{ success: boolean; allowedOrigins: string[] }> => {
       const { data } = await apiInstance.post("/admin/settings/origins", { origin });
       return data;
