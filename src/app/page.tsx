@@ -44,7 +44,6 @@ export default function Dashboard() {
 
   const existingFolders = stats?.foldersBreakdown ? Object.keys(stats.foldersBreakdown) : Array.from(new Set(files.map(f => f.folder)));
   const recentFiles = [...files]
-    .filter(f => f.isPublic)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 6);
 
