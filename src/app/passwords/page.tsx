@@ -430,6 +430,9 @@ export default function PasswordsPage() {
   const weakPasswords = passwords.filter(p => p.password && p.password.length < 10);
   const reusedPasswords = passwords.filter(p => p.password && passwords.filter(p2 => p2.password === p.password).length > 1);
 
+  const existingCategories = Array.from(new Set(passwords.filter((p: any) => p.category && !p.deletedAt).map((p: any) => p.category)));
+  const allCategories = Array.from(new Set(["Personal", "Work", "Finance", "Gaming", ...existingCategories]));
+
   const filteredPasswords = passwords.filter(p => {
     if (filterCategory === "Trash") return p.deletedAt;
     if (p.deletedAt) return false;
@@ -496,7 +499,7 @@ export default function PasswordsPage() {
               </button>
               {showCategoryDropdown && (
                 <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-50">
-                  {['All', 'Personal', 'Work', 'Finance', 'Gaming'].map(cat => (
+                  {['All', ...allCategories].map(cat => (
                     <button
                       key={cat}
                       onClick={() => { setFilterCategory(cat); setShowCategoryDropdown(false); }}
@@ -914,12 +917,12 @@ export default function PasswordsPage() {
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="Personal">Personal</option>
-                    <option value="Work">Work</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Gaming">Gaming</option>
-                  </select>
+                  <input list="category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Type or select new folder..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <datalist id="category-options">
+                    {allCategories.map(cat => (
+                      <option key={cat as string} value={cat as string} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
             )}
