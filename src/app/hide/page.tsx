@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { FilePreviewModal } from "@/components/files/FilePreviewModal";
 import { api, FileData } from "@/lib/api";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Lock, Loader2, File, Image as ImageIcon, Film, FileText, FileJson, FileArchive, Package, MoreVertical, Download, ArrowRightFromLine, Trash2 } from "lucide-react";
 
@@ -11,7 +12,6 @@ export default function VaultPage() {
   const { error: toastError, success } = useToast();
   
   const [isLocked, setIsLocked] = useState(true);
-  const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [previewFile, setPreviewFile] = useState<FileData | null>(null);
@@ -20,21 +20,79 @@ export default function VaultPage() {
   
   const [files, setFiles] = useState<FileData[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isVerifying, setIsVerifying] = useState(false);
 
-  // If locked, we don't need to load files until unlocked.
-  const handleUnlock = async () => {
-    if (pin.length < 4) { setError("PIN is too short"); return; }
-    setLoading(true);
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      interval = setInterval(() => setResendCooldown((c) => c - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
+
+  const handleVerifyWebAuthn = async () => {
+    setIsVerifying(true);
     setError("");
     try {
-      const res = await api.vault.verify(pin);
-      setVaultToken(res.token);
-      setIsLocked(false);
-      loadFiles(res.token);
-    } catch {
-      setError("Incorrect PIN.");
+      const options = await api.request("/api/vault/webauthn/authenticate", { method: "GET" });
+      const asseResp = await startAuthentication({ optionsJSON: options });
+
+      const verifyRes = await api.request("/api/vault/webauthn/authenticate", {
+        method: "POST",
+        body: JSON.stringify(asseResp),
+      });
+
+      if (verifyRes.token) {
+        setVaultToken(verifyRes.token);
+        setIsLocked(false);
+        loadFiles(verifyRes.token);
+      } else {
+        setError("Invalid authentication");
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || "Authentication cancelled or failed");
     } finally {
-      setLoading(false);
+      setIsVerifying(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setIsSendingOtp(true);
+    setError("");
+    try {
+      await api.request("/api/vault/email/send", { method: "POST" });
+      setShowOtp(true);
+      setResendCooldown(60);
+    } catch (err: any) {
+      setError(err.message || "Failed to send code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length < 6) { setError("Code must be 6 digits"); return; }
+    setIsVerifying(true);
+    setError("");
+    try {
+      const verifyRes = await api.request("/api/vault/email/verify", {
+        method: "POST",
+        body: JSON.stringify({ code: otp }),
+      });
+      if (verifyRes.token) {
+        setVaultToken(verifyRes.token);
+        setIsLocked(false);
+        loadFiles(verifyRes.token);
+      }
+    } catch (err: any) {
+      setError(err.message || "Invalid or expired code");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -79,7 +137,6 @@ export default function VaultPage() {
     setIsLocked(true);
     setVaultToken(null);
     setFiles([]);
-    setPin("");
   };
 
   // Lock automatically if page is hidden
@@ -117,32 +174,60 @@ export default function VaultPage() {
                 <Lock className="h-8 w-8 text-indigo-500" />
               </div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Secure Vault</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Enter your PIN to access hidden files.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 text-center">Your hidden files are heavily encrypted on the server. Unlock using your passkey or email code.</p>
               
-              {error && (
-                <div className="mb-4 text-sm text-red-500 bg-red-50 dark:bg-red-500/10 p-2 rounded-xl">
-                  {error}
+              {showOtp ? (
+                <form onSubmit={handleVerifyOtp} className="w-full">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="6-Digit Code"
+                    value={otp}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-2xl tracking-[0.5em] text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-indigo-500/60 mb-4"
+                    maxLength={6}
+                    autoFocus
+                  />
+                  {error && <p className="text-red-500 dark:text-red-400 text-sm text-center mb-4">{error}</p>}
+                  <button
+                    type="submit"
+                    disabled={isVerifying || otp.length < 6}
+                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 py-3 text-sm font-bold text-white shadow-lg hover:from-indigo-500 hover:to-purple-500 transition-all disabled:opacity-50 mb-3"
+                  >
+                    {isVerifying ? "Verifying..." : "Unlock Vault"}
+                  </button>
+                  <button type="button" onClick={() => setShowOtp(false)}
+                    className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-sm font-medium py-2">
+                    Back
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={resendCooldown > 0 || isSendingOtp}
+                    className="w-full text-xs font-medium text-slate-400 hover:text-indigo-500 disabled:opacity-50 transition-colors mt-2"
+                  >
+                    {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : "Didn't receive it? Resend Code"}
+                  </button>
+                </form>
+              ) : (
+                <div className="w-full space-y-3">
+                  <button
+                    onClick={handleVerifyWebAuthn}
+                    disabled={isVerifying}
+                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 py-3 text-sm font-bold text-white shadow-lg hover:from-indigo-500 hover:to-purple-500 transition-all disabled:opacity-50"
+                  >
+                    {isVerifying ? "Waiting for device..." : "Unlock with Windows Hello / Touch ID"}
+                  </button>
+                  <button
+                    onClick={handleSendOtp}
+                    disabled={isSendingOtp}
+                    className="w-full rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 py-3 text-sm font-bold text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all disabled:opacity-50"
+                  >
+                    {isSendingOtp ? "Sending code..." : "Use Email Code Fallback"}
+                  </button>
+                  {error && <p className="text-red-500 dark:text-red-400 text-sm text-center mt-4">{error}</p>}
                 </div>
               )}
-              
-              <input
-                type="password"
-                inputMode="numeric"
-                value={pin}
-                onChange={(e) => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleUnlock(); }}
-                placeholder="Enter PIN"
-                autoFocus
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-2xl tracking-[0.5em] text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-indigo-500/60 mb-4"
-              />
-              
-              <button
-                onClick={handleUnlock}
-                disabled={loading || pin.length < 4}
-                className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 py-3 text-sm font-bold text-white shadow-lg hover:from-indigo-500 hover:to-purple-500 transition-all disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : "Unlock Vault"}
-              </button>
             </div>
           </div>
         ) : (
