@@ -22,6 +22,12 @@ apiInstance.interceptors.request.use(async (config) => {
   // Attach MFA token from localStorage as a header fallback
   // (needed when Vercel proxy strips Set-Cookie headers from Express responses)
   if (typeof window !== "undefined") {
+    // Dynamic backend URL override
+    const customBackendUrl = localStorage.getItem("client_backend_url");
+    if (customBackendUrl) {
+      config.baseURL = customBackendUrl;
+    }
+
     const mfaToken = localStorage.getItem("mfa_token");
     if (mfaToken) {
       config.headers["x-mfa-token"] = mfaToken;
