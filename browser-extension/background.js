@@ -63,7 +63,7 @@ async function getValidToken() {
 
 async function apiRequest(method, path, body = null, vaultToken = null) {
   const { baseUrl } = await getStoredAuth();
-  const apiBase = baseUrl || 'https://lootops-cloud.subhan.tech';
+  const apiBase = baseUrl || 'https://server.subhan.tech';
   const idToken = await getValidToken();
   if (!idToken) throw new Error('Not authenticated');
 
@@ -247,7 +247,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const cryptoKey = await crypto.subtle.importKey(
               'raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
             );
-            
+
             const signature = await crypto.subtle.sign('HMAC', cryptoKey, timeBuffer);
             const hmac = new Uint8Array(signature);
 
@@ -289,16 +289,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (!vaultToken) { sendResponse({ success: false }); break; }
 
           // Store credentials temporarily so notification button click can save them
-          await chrome.storage.session.set({ pendingSave: {
-            title: msg.title,
-            username: msg.username,
-            password: msg.password,
-            website: msg.website,
-            notes: msg.notes || '',
-            type: msg.type || 'password',
-            category: msg.category || 'Personal',
-            favorite: false
-          }});
+          await chrome.storage.session.set({
+            pendingSave: {
+              title: msg.title,
+              username: msg.username,
+              password: msg.password,
+              website: msg.website,
+              notes: msg.notes || '',
+              type: msg.type || 'password',
+              category: msg.category || 'Personal',
+              favorite: false
+            }
+          });
 
           // Show interactive notification asking user if they want to save
           chrome.notifications.create('lootops-save-' + Date.now(), {
@@ -370,7 +372,7 @@ chrome.notifications.onButtonClicked.addListener(async (notifId, btnIdx) => {
           });
           await chrome.storage.session.remove('pendingSave');
         }
-      } catch(e) {
+      } catch (e) {
         console.error('Failed to save captured password', e);
         chrome.notifications.create({
           type: 'basic',
@@ -397,7 +399,7 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "Fill Password/Data",
     contexts: ["editable"]
   });
-  
+
   chrome.contextMenus.create({
     id: "lootops-generate",
     title: "Generate Strong Password",
