@@ -122,6 +122,14 @@ export interface SystemSettings {
   discordWebhookUrl?: string;
 }
 export const api = {
+  // Generic request for Vault auth
+  request: async (url: string, config?: any) => {
+    let method = config?.method || "GET";
+    let data = config?.body ? JSON.parse(config.body) : undefined;
+    const res = await apiInstance.request({ url, method, data });
+    return res.data;
+  },
+
   // Files
   getFiles: async (): Promise<FileData[]> => {
     const { data } = await apiInstance.get("/admin/files");
