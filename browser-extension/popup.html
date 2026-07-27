@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LootOps Vault</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- LOGIN SCREEN -->
+    <div id="screen-login" class="screen hidden">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">LootOps Vault</div>
+          <div class="brand-sub">Sign in to access your vault</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <div class="input-with-toggle">
+          <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" />
+          <button class="toggle-btn" data-target="login-password" title="Show/Hide">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Server URL</label>
+        <input type="url" id="login-base-url" placeholder="https://lootops-cloud.subhan.tech" />
+      </div>
+
+      <div id="login-error" class="error-msg hidden"></div>
+      <button id="btn-login" class="btn btn-primary">Sign In</button>
+    </div>
+
+    <!-- PIN SCREEN -->
+    <div id="screen-pin" class="screen hidden">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">Vault Locked</div>
+          <div class="brand-sub" id="pin-email-label"></div>
+        </div>
+      </div>
+
+      <div class="pin-dots" id="pin-dots">
+        <span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="pin-pad">
+        <button class="pin-key" data-val="1">1</button>
+        <button class="pin-key" data-val="2">2</button>
+        <button class="pin-key" data-val="3">3</button>
+        <button class="pin-key" data-val="4">4</button>
+        <button class="pin-key" data-val="5">5</button>
+        <button class="pin-key" data-val="6">6</button>
+        <button class="pin-key" data-val="7">7</button>
+        <button class="pin-key" data-val="8">8</button>
+        <button class="pin-key" data-val="9">9</button>
+        <button class="pin-key pin-key-confirm" id="pin-confirm">✓</button>
+        <button class="pin-key" data-val="0">0</button>
+        <button class="pin-key pin-key-del" id="pin-del">⌫</button>
+      </div>
+
+      <div id="pin-error" class="error-msg hidden"></div>
+      <button id="btn-signout-from-pin" class="btn btn-ghost" style="margin-top:8px;">Sign out</button>
+    </div>
+
+    <!-- MAIN VAULT SCREEN -->
+    <div id="screen-vault" class="screen hidden">
+      <!-- Header -->
+      <div class="vault-header">
+        <div class="vault-header-left">
+          <div class="brand-icon-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <span class="vault-title">Vault</span>
+        </div>
+        <div class="vault-header-right">
+          <button id="btn-add" class="icon-btn" title="New Entry">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button id="btn-gen" class="icon-btn" title="Password Generator">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </button>
+          <button id="btn-lock" class="icon-btn icon-btn-danger" title="Lock Vault">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Search + Filter -->
+      <div class="search-bar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search vault..." />
+        <button id="btn-filter" class="filter-btn" title="Filter by category">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        </button>
+      </div>
+
+      <!-- Category chips -->
+      <div id="category-chips" class="category-chips"></div>
+
+      <!-- Site Match Banner -->
+      <div id="site-match-banner" class="site-banner hidden">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="site-match-text"></span>
+      </div>
+
+      <!-- Password List -->
+      <div id="password-list" class="password-list"></div>
+
+      <!-- Empty state -->
+      <div id="empty-state" class="empty-state hidden">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <p>No credentials found</p>
+        <button id="btn-add-empty" class="btn btn-primary btn-sm">Add first entry</button>
+      </div>
+
+      <!-- Loading -->
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <!-- DETAIL / EDIT SCREEN -->
+    <div id="screen-detail" class="screen hidden">
+      <div class="detail-header">
+        <button id="btn-back" class="icon-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span id="detail-title" class="detail-title-text"></span>
+        <div class="detail-actions">
+          <button id="btn-edit" class="icon-btn" title="Edit">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button id="btn-delete" class="icon-btn icon-btn-danger" title="Delete">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="detail-content" class="detail-content"></div>
+    </div>
+
+    <!-- ADD/EDIT FORM SCREEN -->
+    <div id="screen-form" class="screen hidden">
+      <div class="detail-header">
+        <button id="btn-form-back" class="icon-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span id="form-title" class="detail-title-text">New Entry</span>
+        <button id="btn-save" class="btn btn-primary btn-sm">Save</button>
+      </div>
+      <div class="form-content">
+        <div class="form-group">
+          <label>Type</label>
+          <select id="f-type">
+            <option value="password">Login / Password</option>
+            <option value="api_key">API Key / Token</option>
+            <option value="credit_card">Credit Card</option>
+            <option value="identity">Identity / SSN</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="f-title" placeholder="e.g. GitHub, Netflix..." />
+        </div>
+        <div class="form-group" id="fg-username">
+          <label id="lbl-username">Username / Email</label>
+          <input type="text" id="f-username" placeholder="username@example.com" autocomplete="off" />
+        </div>
+        <div class="form-group" id="fg-password">
+          <label id="lbl-password">Password</label>
+          <div class="input-with-toggle">
+            <input type="password" id="f-password" placeholder="••••••••••••" autocomplete="new-password" />
+            <button class="toggle-btn" data-target="f-password" title="Show/Hide">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button id="btn-gen-inline" class="toggle-btn" title="Generate strong password" style="right:36px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group" id="fg-api-key" style="display:none;">
+          <label>API Key / Token</label>
+          <div class="input-with-toggle">
+            <input type="password" id="f-api-key" placeholder="sk-xxxxxxxxxxxx" autocomplete="off" />
+            <button class="toggle-btn" data-target="f-api-key">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group" id="fg-client-secret" style="display:none;">
+          <label>Client Secret (optional)</label>
+          <input type="password" id="f-client-secret" placeholder="Client secret / OAuth secret" autocomplete="off" />
+        </div>
+        <div class="form-group" id="fg-base-url" style="display:none;">
+          <label>Base URL</label>
+          <input type="url" id="f-base-url" placeholder="https://api.example.com" />
+        </div>
+        <div class="form-group" id="fg-environment" style="display:none;">
+          <label>Environment</label>
+          <select id="f-environment">
+            <option value="production">Production</option>
+            <option value="staging">Staging</option>
+            <option value="development">Development</option>
+            <option value="test">Test</option>
+          </select>
+        </div>
+        <div class="form-group" id="fg-website">
+          <label>Website</label>
+          <input type="url" id="f-website" placeholder="https://example.com" />
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <input type="text" id="f-category" list="category-list" placeholder="Personal, Work, Finance..." />
+          <datalist id="category-list">
+            <option value="Personal" />
+            <option value="Work" />
+            <option value="Finance" />
+            <option value="Gaming" />
+            <option value="Social" />
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="f-notes" rows="3" placeholder="Security questions, recovery codes..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- GENERATOR SCREEN -->
+    <div id="screen-generator" class="screen hidden">
+      <div class="detail-header">
+        <button id="btn-gen-back" class="icon-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="detail-title-text">Password Generator</span>
+      </div>
+      <div class="gen-content">
+        <div class="gen-output">
+          <span id="gen-output-text">Click Generate</span>
+          <button id="btn-copy-gen" class="icon-btn" title="Copy">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+        <div class="gen-strength" id="gen-strength-bar">
+          <div class="gen-strength-fill" id="gen-strength-fill"></div>
+        </div>
+        <div id="gen-strength-label" class="gen-strength-label"></div>
+
+        <div class="gen-options">
+          <div class="gen-option-row">
+            <label>Length: <span id="gen-len-val">20</span></label>
+            <input type="range" id="gen-length" min="8" max="64" value="20" />
+          </div>
+          <div class="gen-option-row">
+            <label>Uppercase (A-Z)</label>
+            <input type="checkbox" id="gen-upper" checked />
+          </div>
+          <div class="gen-option-row">
+            <label>Lowercase (a-z)</label>
+            <input type="checkbox" id="gen-lower" checked />
+          </div>
+          <div class="gen-option-row">
+            <label>Numbers (0-9)</label>
+            <input type="checkbox" id="gen-numbers" checked />
+          </div>
+          <div class="gen-option-row">
+            <label>Symbols (!@#...)</label>
+            <input type="checkbox" id="gen-symbols" checked />
+          </div>
+        </div>
+        <button id="btn-generate" class="btn btn-primary">Generate</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
