@@ -5876,8 +5876,74 @@ const vaultTokens = {};
 app.get("/api/vault/status", requireAuth, (req, res) => {
   const db = readDb();
   const email = req.user.email || req.user.uid;
-  const isSetup = !!(db.vaults && db.vaults[email] && db.vaults[email].isSetup);
-  res.json({ enabled: isSetup });
+  const vault = db.vaults?.[email];
+  const isSetup = !!(vault && vault.isSetup);
+  const hasPin = !!(vault && vault.pinHash);
+  res.json({ enabled: isSetup, hasPin });
+});
+
+// Helper: hash a PIN with a per-user salt
+function hashPin(pin, salt) {
+  return crypto.createHash("sha256").update(pin + salt).digest("hex");
+}
+
+// SET UP (or reset) a vault PIN
+app.post("/api/vault/setup-pin", requireAuth, (req, res) => {
+  const { pin } = req.body;
+  if (!pin || pin.length < 4) {
+    return res.status(400).json({ error: "PIN must be at least 4 characters." });
+  }
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  if (!db.vaults) db.vaults = {};
+  if (!db.vaults[email]) db.vaults[email] = {};
+  const salt = crypto.randomBytes(16).toString("hex");
+  db.vaults[email].pinHash = hashPin(pin, salt);
+  db.vaults[email].pinSalt = salt;
+  db.vaults[email].isSetup = true;
+  writeDb(db);
+  res.json({ success: true, message: "PIN set successfully." });
+});
+
+// VERIFY PIN — returns a vault token
+app.post("/api/vault/verify-pin", requireAuth, (req, res) => {
+  const { pin } = req.body;
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  const vault = db.vaults?.[email];
+  if (!vault || !vault.pinHash || !vault.pinSalt) {
+    return res.status(400).json({ error: "No PIN set up for this vault." });
+  }
+  if (hashPin(pin, vault.pinSalt) !== vault.pinHash) {
+    return res.status(401).json({ error: "Incorrect PIN." });
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  vaultTokens[email] = token;
+  res.json({ success: true, token });
+});
+
+// CHANGE PIN — requires current PIN
+app.post("/api/vault/change-pin", requireAuth, (req, res) => {
+  const { currentPin, newPin } = req.body;
+  if (!newPin || newPin.length < 4) {
+    return res.status(400).json({ error: "New PIN must be at least 4 characters." });
+  }
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  const vault = db.vaults?.[email];
+  // If a PIN already exists, verify current PIN
+  if (vault?.pinHash && vault?.pinSalt) {
+    if (!currentPin || hashPin(currentPin, vault.pinSalt) !== vault.pinHash) {
+      return res.status(401).json({ error: "Current PIN is incorrect." });
+    }
+  }
+  if (!db.vaults) db.vaults = {};
+  if (!db.vaults[email]) db.vaults[email] = {};
+  const salt = crypto.randomBytes(16).toString("hex");
+  db.vaults[email].pinHash = hashPin(newPin, salt);
+  db.vaults[email].pinSalt = salt;
+  writeDb(db);
+  res.json({ success: true, message: "PIN updated successfully." });
 });
 
 app.post("/api/vault/email/send", requireAuth, async (req, res) => {
