@@ -113,7 +113,7 @@ export default function FilesPage() {
   const allFolderPaths = getAllPaths(folderTree);
 
   // Filter files
-  let filteredFiles = files;
+  let filteredFiles = files.filter(f => f.isPublic);
   if (activeFolder) filteredFiles = filteredFiles.filter(f => f.folder === activeFolder);
   if (activeType !== "all") filteredFiles = filteredFiles.filter(f => f.type === activeType);
   if (searchQuery) {
