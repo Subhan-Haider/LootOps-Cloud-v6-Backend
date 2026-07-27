@@ -41,6 +41,23 @@ html, body {
   padding: 0;
 }
 
+/* ---- SCROLLBAR ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--indigo-light);
+}
+
+
 #app {
   width: 380px;
   min-height: 100%;
