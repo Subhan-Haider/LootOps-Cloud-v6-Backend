@@ -88,6 +88,16 @@ async function init() {
     showScreen('login');
   } else if (!auth.hasVault) {
     document.getElementById('otp-email-label').textContent = auth.email || '';
+    
+    // Check if OTP was sent recently
+    const { otpSentAt } = await chrome.storage.local.get('otpSentAt');
+    if (otpSentAt) {
+      const elapsed = Date.now() - otpSentAt;
+      if (elapsed < 60000) {
+        startOtpTimer(elapsed);
+      }
+    }
+    
     showScreen('otp');
   } else {
     await loadVault();
@@ -179,26 +189,8 @@ document.getElementById('btn-send-otp').addEventListener('click', async () => {
     const res = await sendMsg({ type: 'SEND_OTP' });
     if (res.success) {
       document.getElementById('otp-input-section').classList.remove('hidden');
-      
-      // Change to ghost button for Resend
-      btn.classList.remove('btn-primary');
-      btn.classList.add('btn-ghost');
-      
-      let timeLeft = 60;
-      if (otpTimer) clearInterval(otpTimer);
-      
-      btn.textContent = `Resend Code (${timeLeft}s)`;
-      otpTimer = setInterval(() => {
-        timeLeft--;
-        if (timeLeft <= 0) {
-          clearInterval(otpTimer);
-          btn.disabled = false;
-          btn.textContent = 'Resend Code';
-        } else {
-          btn.textContent = `Resend Code (${timeLeft}s)`;
-        }
-      }, 1000);
-      
+      await chrome.storage.local.set({ otpSentAt: Date.now() });
+      startOtpTimer();
     } else {
       showError(errorEl, res.error || 'Failed to send OTP');
       btn.disabled = false;
@@ -210,6 +202,37 @@ document.getElementById('btn-send-otp').addEventListener('click', async () => {
     btn.textContent = 'Send Code';
   }
 });
+
+function startOtpTimer(elapsed = 0) {
+  const btn = document.getElementById('btn-send-otp');
+  document.getElementById('otp-input-section').classList.remove('hidden');
+  
+  btn.classList.remove('btn-primary');
+  btn.classList.add('btn-ghost');
+  
+  let timeLeft = 60 - Math.floor(elapsed / 1000);
+  if (timeLeft <= 0) timeLeft = 0;
+  
+  if (otpTimer) clearInterval(otpTimer);
+  
+  if (timeLeft > 0) {
+    btn.disabled = true;
+    btn.textContent = `Resend Code (${timeLeft}s)`;
+    otpTimer = setInterval(() => {
+      timeLeft--;
+      if (timeLeft <= 0) {
+        clearInterval(otpTimer);
+        btn.disabled = false;
+        btn.textContent = 'Resend Code';
+      } else {
+        btn.textContent = `Resend Code (${timeLeft}s)`;
+      }
+    }, 1000);
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Resend Code';
+  }
+}
 
 document.getElementById('btn-verify-otp').addEventListener('click', async () => {
   const code = document.getElementById('otp-input').value;
