@@ -6150,12 +6150,19 @@ app.get("/api/vault/skip-token", requireAuth, (req, res) => {
   res.json({ success: true, token });
 });
 
+function getClientHost(req) {
+  if (req.headers.origin) return new URL(req.headers.origin).hostname;
+  if (req.headers.referer) return new URL(req.headers.referer).hostname;
+  if (req.headers['x-forwarded-host']) return req.headers['x-forwarded-host'].split(',')[0].trim();
+  return req.hostname;
+}
+
 app.get("/api/vault/webauthn/register", requireAuth, async (req, res) => {
   const db = readDb();
   const email = req.user.email || req.user.uid;
   
   const rpName = 'LootOps Vault';
-  const rpID = req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname;
+  const rpID = getClientHost(req);
 
   const user = { id: email, name: email, displayName: email };
   const userPasskeys = db.vaults?.[email]?.passkeys || [];
@@ -6194,8 +6201,8 @@ app.post("/api/vault/webauthn/register", requireAuth, async (req, res) => {
     const verification = await verifyRegistrationResponse({
       response: req.body,
       expectedChallenge,
-      expectedOrigin: req.headers.origin || `https://${req.hostname}`,
-      expectedRPID: req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname,
+      expectedOrigin: req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `https://${req.hostname}`),
+      expectedRPID: getClientHost(req),
     });
 
     if (verification.verified && verification.registrationInfo) {
@@ -6231,7 +6238,7 @@ app.get("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
 
   if (userPasskeys.length === 0) return res.status(400).json({ error: "No passkeys registered" });
 
-  const rpID = req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname;
+  const rpID = getClientHost(req);
   const options = await generateAuthenticationOptions({
     rpID,
     allowCredentials: userPasskeys.map(pk => ({
@@ -6264,8 +6271,8 @@ app.post("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
     const verification = await verifyAuthenticationResponse({
       response: req.body,
       expectedChallenge,
-      expectedOrigin: req.headers.origin || `https://${req.hostname}`,
-      expectedRPID: req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname,
+      expectedOrigin: req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `https://${req.hostname}`),
+      expectedRPID: getClientHost(req),
       authenticator: {
         credentialID: Buffer.from(passkey.credentialID, 'base64url'),
         credentialPublicKey: Buffer.from(passkey.credentialPublicKey, 'base64url'),
