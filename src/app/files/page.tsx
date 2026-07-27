@@ -112,8 +112,8 @@ export default function FilesPage() {
   };
   const allFolderPaths = getAllPaths(folderTree);
 
-  // Filter files
-  let filteredFiles = files.filter(f => f.isPublic);
+  // Filter files — show all files to admin (both public and private)
+  let filteredFiles = [...files];
   if (activeFolder) filteredFiles = filteredFiles.filter(f => f.folder === activeFolder);
   if (activeType !== "all") filteredFiles = filteredFiles.filter(f => f.type === activeType);
   if (searchQuery) {
