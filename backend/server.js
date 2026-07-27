@@ -5807,7 +5807,9 @@ app.get("/", (req, res) => {
   if (req.query.code) {
     return res.redirect(`/api/github/callback?code=${req.query.code}`);
   }
-  res.send("Storage Server Admin API Running 🔒");
+  const db = readDb();
+  const msg = db.settings?.rootMessage || "Storage Server Admin API Running 🔒";
+  res.send(msg);
 });
 
 // =====================

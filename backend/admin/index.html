@@ -120,11 +120,13 @@
       
       const allowedOrigins = originsRaw.split('\n').map(s => s.trim()).filter(Boolean);
       const allowedEmails = emailsRaw.split('\n').map(s => s.trim()).filter(Boolean);
+      const rootMessage = document.getElementById('rootMessage').value;
       
       const updatedSettings = {
         ...settings,
         allowedOrigins,
         allowedEmails,
+        rootMessage,
       };
 
       try {
@@ -234,6 +236,16 @@
       if (!settings) return `<div class="text-center py-20 text-slate-500">Loading settings...</div>`;
       return `
         <form onsubmit="saveSettings(event)" class="space-y-6">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <h2 class="text-lg font-semibold mb-1">General Settings</h2>
+            <p class="text-sm text-slate-500 mb-4">Basic server configuration.</p>
+            <div>
+              <label class="block text-sm font-medium mb-2">Root Message</label>
+              <input type="text" id="rootMessage" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" value="${settings.rootMessage || 'Storage Server Admin API Running 🔒'}" />
+              <p class="text-xs text-slate-500 mt-2">The message shown when visiting the base URL of this API.</p>
+            </div>
+          </div>
+
           <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
             <h2 class="text-lg font-semibold mb-1">CORS & Security</h2>
             <p class="text-sm text-slate-500 mb-4">Manage which domains are allowed to communicate with this backend API.</p>
