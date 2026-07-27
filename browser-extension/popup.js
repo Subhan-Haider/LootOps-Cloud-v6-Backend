@@ -122,7 +122,18 @@ document.getElementById('btn-login').addEventListener('click', async () => {
     const res = await sendMsg({ type: 'SIGN_IN', email, password });
     if (res.success) {
       document.getElementById('otp-email-label').textContent = res.email || email;
-      showScreen('otp');
+      btn.textContent = 'Checking settings...';
+
+      // Try to skip OTP if user has enabled that in their account settings
+      const skipRes = await sendMsg({ type: 'SKIP_OTP_CHECK' });
+      if (skipRes.success) {
+        // Skip OTP — go directly to vault
+        await loadVault();
+        showScreen('vault');
+      } else {
+        // OTP required — show the email verification screen
+        showScreen('otp');
+      }
     } else {
       showError(errorEl, res.error || 'Login failed');
     }

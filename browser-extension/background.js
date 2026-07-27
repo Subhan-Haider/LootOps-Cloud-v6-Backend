@@ -175,6 +175,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
 
+        case 'SKIP_OTP_CHECK': {
+          // Try to get vault token without email OTP (only works if user enabled the setting)
+          try {
+            const data = await apiRequest('GET', '/api/vault/skip-token');
+            if (data.token) {
+              await saveAuth({ vaultToken: data.token });
+              sendResponse({ success: true, skipped: true });
+            } else {
+              sendResponse({ success: false });
+            }
+          } catch (err) {
+            // 403 = setting is not enabled, need OTP
+            sendResponse({ success: false, requiresOtp: true });
+          }
+          break;
+        }
+
         case 'LOCK_VAULT': {
           await chrome.storage.local.remove('vaultToken');
           sendResponse({ success: true });

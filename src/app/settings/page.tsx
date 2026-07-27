@@ -14,6 +14,7 @@ import { SystemSettings } from "@/components/settings/SystemSettings";
 import { AISettings } from "@/components/settings/AISettings";
 import { UserManagement } from "@/components/settings/UserManagement";
 import { SecureVaultSetup } from "@/components/settings/SecureVaultSetup";
+import { ExtensionOtpToggle } from "@/components/settings/ExtensionOtpToggle";
 import { useTheme } from "@/lib/theme";
 
 export default function SettingsPage() {
@@ -216,6 +217,7 @@ export default function SettingsPage() {
                   <ChangePassword />
                   <TwoFactorSetup />
                   <SecureVaultSetup />
+                  <ExtensionOtpToggle />
                 </div>
               </div>
             )}

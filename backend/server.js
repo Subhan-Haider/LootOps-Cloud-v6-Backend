@@ -5891,6 +5891,39 @@ app.post("/api/vault/email/verify", requireAuth, (req, res) => {
   res.json({ success: true, token });
 });
 
+// GET: Check if extension email verify is enabled/disabled for this user
+app.get("/api/vault/settings", requireAuth, (req, res) => {
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  const skipEmailVerify = db.vaults?.[email]?.extensionSkipEmailVerify === true;
+  res.json({ success: true, extensionSkipEmailVerify: skipEmailVerify });
+});
+
+// POST: Toggle extension email verify on/off
+app.post("/api/vault/settings", requireAuth, (req, res) => {
+  const { extensionSkipEmailVerify } = req.body;
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  if (!db.vaults) db.vaults = {};
+  if (!db.vaults[email]) db.vaults[email] = { createdAt: new Date().toISOString(), passkeys: [] };
+  db.vaults[email].extensionSkipEmailVerify = !!extensionSkipEmailVerify;
+  writeDb(db);
+  res.json({ success: true, extensionSkipEmailVerify: !!extensionSkipEmailVerify });
+});
+
+// GET: Issue vault token directly (only if extensionSkipEmailVerify is enabled)
+app.get("/api/vault/skip-token", requireAuth, (req, res) => {
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  const allowed = db.vaults?.[email]?.extensionSkipEmailVerify === true;
+  if (!allowed) {
+    return res.status(403).json({ error: "Email verification is required. Enable 'Skip email verify for extension' in your settings first." });
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  vaultTokens[token] = { email, expires: Date.now() + 60 * 60 * 1000 * 24 * 30 };
+  res.json({ success: true, token });
+});
+
 app.get("/api/vault/webauthn/register", requireAuth, async (req, res) => {
   const db = readDb();
   const email = req.user.email || req.user.uid;
