@@ -341,30 +341,35 @@ npm install
 
 ### 3. Configure Environment Variables
 
-Create a `.env.local` file in the root directory:
+This project has two separate sets of environment variables — one for the **backend** and one for the **frontend**.
+
+#### 🖥️ Backend Environment Variables
+
+Create a `.env` (or `.env.local`) file inside the `/backend` directory:
 
 ```env
 # ── Server ────────────────────────────────────────
 PORT=5000
 API_KEY=your_secret_api_key_here
 
-# ── Firebase Admin SDK ────────────────────────────
+# ── Backend Base URL ──────────────────────────────
+# The public domain where YOUR BACKEND is deployed.
+# Used for building shareable file links and QR codes.
+# Example: https://server.yourdomain.com
+SERVER_BASE_URL=https://server.yourdomain.com
+
+# ── Upload Path ───────────────────────────────────
+# Where files and db.json are stored on the server.
+UPLOAD_PATH=/var/www/storage/uploads
+
+# ── Firebase Admin SDK (REQUIRED for authentication) ──
+# Without these, ALL authenticated API endpoints will fail.
+# Get these from Firebase Console > Project Settings > Service Accounts > Generate new private key
 FIREBASE_PROJECT_ID=your_firebase_project_id
-# Place your Firebase service account JSON at the project root
-# or configure GOOGLE_APPLICATION_CREDENTIALS
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
 
-# ── Firebase Client (for Next.js frontend) ────────
-NEXT_PUBLIC_FIREBASE_API_KEY=your_web_api_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_firebase_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-
-# ── CORS ──────────────────────────────────────────
-ALLOWED_ORIGINS=https://your-domain.com,https://another-domain.com
-
-# ── SMTP / Email (Optional) ───────────────────────
+# ── SMTP / Email (Optional, for OTP & notifications) ──
 SMTP_ENABLED=true
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
@@ -373,7 +378,32 @@ SMTP_USER=user@example.com
 SMTP_PASS=your_smtp_password
 SMTP_FROM=noreply@example.com
 ADMIN_EMAIL=admin@example.com
+
+# ── Discord Webhook (Optional) ────────────────────
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
+
+#### 🌐 Frontend Environment Variables
+
+Create a `.env.local` file in the **root** of the project (Next.js reads from the root):
+
+```env
+# ── Backend API URL ───────────────────────────────
+# The public domain where your BACKEND is deployed.
+# The Next.js frontend will send all API requests here.
+# Example: https://server.yourdomain.com
+NEXT_PUBLIC_API_URL=https://server.yourdomain.com
+
+# ── Firebase Client SDK (for user authentication) ─
+NEXT_PUBLIC_FIREBASE_API_KEY=your_web_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_firebase_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+```
+
+> **Tip:** `NEXT_PUBLIC_API_URL` and `SERVER_BASE_URL` usually point to the same backend domain. `NEXT_PUBLIC_API_URL` tells the browser where to send requests; `SERVER_BASE_URL` tells the backend its own public address so it can build correct download/share links.
 
 ### 4. Configure Upload Path
 
