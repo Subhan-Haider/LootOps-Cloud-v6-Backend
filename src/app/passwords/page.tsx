@@ -58,6 +58,34 @@ export default function PasswordsPage() {
   const [pinChangeStatus, setPinChangeStatus] = useState("");
   const lastActivity = useRef(Date.now());
 
+
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  // Form State
+  const [title, setTitle] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [website, setWebsite] = useState("");
+  const [notes, setNotes] = useState("");
+  const [totpSecret, setTotpSecret] = useState("");
+  const [currentTotp, setCurrentTotp] = useState("");
+  const [totpProgress, setTotpProgress] = useState(0);
+  const [entryType, setEntryType] = useState<"password"|"credit_card"|"identity">("password");
+  const [category, setCategory] = useState("Personal");
+  const [customFields, setCustomFields] = useState<any>({});
+  const [filterCategory, setFilterCategory] = useState("All");
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+
+  // Vault State
+  const [vaultToken, setVaultToken] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+
+  // Auto-lock Ref
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const updateActivity = () => { lastActivity.current = Date.now(); };
     window.addEventListener('mousemove', updateActivity);
@@ -92,33 +120,6 @@ export default function PasswordsPage() {
       setPinChangeStatus(err.response?.data?.error || "Failed to update PIN");
     }
   };
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  
-  // Form State
-  const [title, setTitle] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [website, setWebsite] = useState("");
-  const [notes, setNotes] = useState("");
-  const [totpSecret, setTotpSecret] = useState("");
-  const [currentTotp, setCurrentTotp] = useState("");
-  const [totpProgress, setTotpProgress] = useState(0);
-  const [entryType, setEntryType] = useState<"password"|"credit_card"|"identity">("password");
-  const [category, setCategory] = useState("Personal");
-  const [customFields, setCustomFields] = useState<any>({});
-  const [filterCategory, setFilterCategory] = useState("All");
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-
-  // Vault State
-  const [vaultToken, setVaultToken] = useState<string | null>(null);
-  const [pin, setPin] = useState("");
-  const [pinError, setPinError] = useState("");
-  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
-
-  // Auto-lock Ref
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   // Auto-Lock Logic
   useEffect(() => {
     if (!vaultToken) return;
