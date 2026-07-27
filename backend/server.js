@@ -34,12 +34,7 @@ const formsEngine = require("./forms_engine");
 const notesEngine = require("./notes_engine");
 const passwordsEngine = require("./passwords_engine");
 const createLfsRouter = require("./lfs_server");
-const { 
-  generateRegistrationOptions, 
-  verifyRegistrationResponse, 
-  generateAuthenticationOptions, 
-  verifyAuthenticationResponse 
-} = require("@simplewebauthn/server");
+
 
 const app = express();
 app.use(cookieParser());
@@ -6150,171 +6145,110 @@ app.get("/api/vault/skip-token", requireAuth, (req, res) => {
   res.json({ success: true, token });
 });
 
-function getClientHost(req) {
-  if (req.headers.origin) return new URL(req.headers.origin).hostname;
-  if (req.headers.referer) return new URL(req.headers.referer).hostname;
-  if (req.headers['x-forwarded-host']) return req.headers['x-forwarded-host'].split(',')[0].trim();
-  return req.hostname;
-}
-
-app.get("/api/vault/webauthn/register", requireAuth, async (req, res) => {
+app.post("/api/vault/setup", requireAuth, (req, res) => {
+  const { pin } = req.body;
   const db = readDb();
   const email = req.user.email || req.user.uid;
+  if (!db.vaults) db.vaults = {};
+  if (!db.vaults[email]) db.vaults[email] = { createdAt: new Date().toISOString() };
   
-  const rpName = 'LootOps Vault';
-  const rpID = getClientHost(req);
-
-  const user = { id: email, name: email, displayName: email };
-  const userPasskeys = db.vaults?.[email]?.passkeys || [];
-
-  const options = await generateRegistrationOptions({
-    rpName,
-    rpID,
-    userID: new Uint8Array(Buffer.from(user.id)),
-    userName: user.name,
-    attestationType: 'none',
-    excludeCredentials: userPasskeys.map(pk => ({
-      id: pk.credentialID,
-      type: 'public-key',
-    })),
-    authenticatorSelection: {
-      residentKey: 'preferred',
-      userVerification: 'preferred',
-    },
-  });
-
-  if (!db.webauthnChallenges) db.webauthnChallenges = {};
-  db.webauthnChallenges[email] = options.challenge;
+  if (db.vaults[email].isSetup) return res.status(400).json({ error: "Vault already setup" });
+  
+  const pinHash = crypto.createHash("sha256").update(pin).digest("hex");
+  db.vaults[email].pinHash = pinHash;
+  db.vaults[email].isSetup = true;
   writeDb(db);
-
-  res.json(options);
+  res.json({ success: true });
 });
 
-app.post("/api/vault/webauthn/register", requireAuth, async (req, res) => {
+app.post("/api/vault/verify", requireAuth, (req, res) => {
+  const { pin } = req.body;
   const db = readDb();
   const email = req.user.email || req.user.uid;
+  const vault = db.vaults?.[email];
+  if (!vault) return res.status(400).json({ error: "Vault not set up" });
   
-  const expectedChallenge = db.webauthnChallenges?.[email];
-  if (!expectedChallenge) return res.status(400).json({ error: "No active challenge" });
-
-  try {
-    const verification = await verifyRegistrationResponse({
-      response: req.body,
-      expectedChallenge,
-      expectedOrigin: req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `https://${req.hostname}`),
-      expectedRPID: getClientHost(req),
-    });
-
-    if (verification.verified && verification.registrationInfo) {
-      const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
-
-      if (!db.vaults) db.vaults = {};
-      if (!db.vaults[email]) db.vaults[email] = { createdAt: new Date().toISOString(), passkeys: [] };
-      if (!db.vaults[email].passkeys) db.vaults[email].passkeys = [];
-
-      db.vaults[email].passkeys.push({
-        credentialID: Buffer.from(credentialID).toString('base64url'),
-        credentialPublicKey: Buffer.from(credentialPublicKey).toString('base64url'),
-        counter,
-        transports: req.body.response.transports || [],
-      });
-      db.vaults[email].isSetup = true;
-      delete db.webauthnChallenges[email];
-      writeDb(db);
-
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ error: "Verification failed" });
-    }
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const pinHash = crypto.createHash("sha256").update(pin).digest("hex");
+  if (vault.pinHash !== pinHash) return res.status(401).json({ error: "Incorrect PIN" });
+  
+  const token = crypto.randomBytes(32).toString("hex");
+  vaultTokens[token] = { email, expires: Date.now() + 60 * 60 * 1000 * 24 * 30 }; // long-lived for extension convenience
+  res.json({ success: true, token });
 });
 
-app.get("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
+app.post("/api/vault/change-pin", requireAuth, (req, res) => {
+  const { currentPin, newPin } = req.body;
   const db = readDb();
   const email = req.user.email || req.user.uid;
-  const userPasskeys = db.vaults?.[email]?.passkeys || [];
-
-  if (userPasskeys.length === 0) return res.status(400).json({ error: "No passkeys registered" });
-
-  const rpID = getClientHost(req);
-  const options = await generateAuthenticationOptions({
-    rpID,
-    allowCredentials: userPasskeys.map(pk => ({
-      id: Buffer.from(pk.credentialID, 'base64url'),
-      type: 'public-key',
-      transports: pk.transports,
-    })),
-    userVerification: 'preferred',
-  });
-
-  if (!db.webauthnChallenges) db.webauthnChallenges = {};
-  db.webauthnChallenges[email] = options.challenge;
+  const vault = db.vaults?.[email];
+  if (!vault) return res.status(400).json({ error: "Vault not set up" });
+  
+  const currentHash = crypto.createHash("sha256").update(currentPin).digest("hex");
+  if (vault.pinHash !== currentHash) return res.status(401).json({ error: "Incorrect Current PIN" });
+  
+  const newHash = crypto.createHash("sha256").update(newPin).digest("hex");
+  vault.pinHash = newHash;
   writeDb(db);
-
-  res.json(options);
+  res.json({ success: true });
 });
 
-app.post("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
+app.post("/api/vault/forgot-pin", requireAuth, (req, res) => {
+  const db = readDb();
+  const email = req.user.email || req.user.uid;
+  if (!db.mfaCodes) db.mfaCodes = {};
+  
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins
+  db.mfaCodes[email] = { code, expiresAt };
+  writeDb(db);
+  
+  res.json({ success: true, message: "Verification code sent to email" });
+});
+
+app.post("/api/vault/reset-pin", requireAuth, (req, res) => {
+  const { code, newPin } = req.body;
+  if (!code || !newPin) return res.status(400).json({ error: "Code and New PIN are required" });
   const db = readDb();
   const email = req.user.email || req.user.uid;
   
-  const expectedChallenge = db.webauthnChallenges?.[email];
-  if (!expectedChallenge) return res.status(400).json({ error: "No active challenge" });
-
-  const userPasskeys = db.vaults?.[email]?.passkeys || [];
-  const passkey = userPasskeys.find(pk => pk.credentialID === req.body.id);
-  if (!passkey) return res.status(400).json({ error: "Passkey not found" });
-
-  try {
-    const verification = await verifyAuthenticationResponse({
-      response: req.body,
-      expectedChallenge,
-      expectedOrigin: req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : `https://${req.hostname}`),
-      expectedRPID: getClientHost(req),
-      authenticator: {
-        credentialID: Buffer.from(passkey.credentialID, 'base64url'),
-        credentialPublicKey: Buffer.from(passkey.credentialPublicKey, 'base64url'),
-        counter: passkey.counter,
-      },
-    });
-
-    if (verification.verified) {
-      passkey.counter = verification.authenticationInfo.newCounter;
-      delete db.webauthnChallenges[email];
-      writeDb(db);
-
-      const token = crypto.randomBytes(32).toString("hex");
-      vaultTokens[token] = { email, expires: Date.now() + 60 * 60 * 1000 * 24 * 30 }; // long-lived for extension convenience
-      res.json({ success: true, token });
-    } else {
-      res.status(400).json({ error: "Verification failed" });
-    }
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+  if (!db.mfaCodes || !db.mfaCodes[email]) {
+    return res.status(400).json({ error: "Invalid or expired reset code" });
   }
+  
+  if (db.mfaCodes[email].code !== code) {
+    return res.status(400).json({ error: "Incorrect reset code" });
+  }
+  
+  if (Date.now() > db.mfaCodes[email].expiresAt) {
+    delete db.mfaCodes[email];
+    writeDb(db);
+    return res.status(400).json({ error: "Reset code has expired" });
+  }
+  
+  const newPinHash = crypto.createHash("sha256").update(newPin).digest("hex");
+  if (!db.vaults) db.vaults = {};
+  if (!db.vaults[email]) db.vaults[email] = {};
+  db.vaults[email].pinHash = newPinHash;
+  db.vaults[email].isSetup = true;
+  
+  delete db.mfaCodes[email];
+  writeDb(db);
+  
+  res.json({ success: true });
 });
 
 app.post("/api/vault/disable", requireAuth, (req, res) => {
+  const { pin } = req.body;
   const db = readDb();
   const email = req.user.email || req.user.uid;
-  const { token } = req.body;
-
-  const userPasskeys = db.vaults?.[email]?.passkeys || [];
-
-  if (userPasskeys.length > 0) {
-    if (!vaultTokens[token] || vaultTokens[token].email !== email) {
-      return res.status(401).json({ error: "Invalid vault token" });
-    }
-  }
-
-  if (db.vaults && db.vaults[email]) {
-    db.vaults[email].isSetup = false;
-    db.vaults[email].passkeys = [];
-    writeDb(db);
-  }
-
+  const vault = db.vaults?.[email];
+  if (!vault) return res.status(400).json({ error: "Vault not set up" });
+  
+  const pinHash = crypto.createHash("sha256").update(pin).digest("hex");
+  if (vault.pinHash !== pinHash) return res.status(401).json({ error: "Incorrect PIN" });
+  
+  delete db.vaults[email];
+  writeDb(db);
   res.json({ success: true });
 });
 

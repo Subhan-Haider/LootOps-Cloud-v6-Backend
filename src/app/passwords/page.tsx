@@ -37,7 +37,6 @@ import {
 } from "lucide-react";
 import * as OTPAuth from "otpauth";
 import Papa from "papaparse";
-import { startAuthentication } from "@simplewebauthn/browser";
 
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -82,28 +81,9 @@ export default function PasswordsPage() {
 
   // Vault State
   const [vaultToken, setVaultToken] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [showOtp, setShowOtp] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [hasPin, setHasPin] = useState(false);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (resendCooldown > 0) {
-      interval = setInterval(() => setResendCooldown((c) => c - 1), 1000);
-    }
-    return () => clearInterval(interval);
-  }, [resendCooldown]);
-  const [showPinUnlock, setShowPinUnlock] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  // PIN setup/change state
-  const [showSetupPin, setShowSetupPin] = useState(false);
-  const [setupPinValue, setSetupPinValue] = useState("");
-  const [setupPinConfirm, setSetupPinConfirm] = useState("");
-  const [setupPinStatus, setSetupPinStatus] = useState("");
 
   // Auto-lock Ref
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -222,107 +202,21 @@ export default function PasswordsPage() {
     }
   };
 
-  // Load vault status (including hasPin)
-  useEffect(() => {
-    api.request("/api/vault/status", { method: "GET" })
-      .then((s: any) => setHasPin(!!s.hasPin))
-      .catch(() => {});
-  }, []);
-
-  const handleVerifyWebAuthn = async () => {
-    setIsVerifyingPin(true);
-    setPinError("");
-    try {
-      const options = await api.request("/api/vault/webauthn/authenticate", { method: "GET" });
-      const asseResp = await startAuthentication({ optionsJSON: options });
-
-      const verifyRes = await api.request("/api/vault/webauthn/authenticate", {
-        method: "POST",
-        body: JSON.stringify(asseResp),
-      });
-
-      if (verifyRes.token) {
-        setVaultToken(verifyRes.token);
-      } else {
-        setPinError("Invalid authentication");
-      }
-    } catch (err: any) {
-      setPinError(err.response?.data?.error || err.message || "Authentication cancelled or failed");
-    } finally {
-      setIsVerifyingPin(false);
-    }
-  };
-
   const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput.length < 4) { setPinError("PIN must be at least 4 characters"); return; }
+    if (pin.length < 4) { setPinError("PIN is too short"); return; }
     setIsVerifyingPin(true);
     setPinError("");
     try {
-      const res = await api.request("/api/vault/verify-pin", {
-        method: "POST",
-        body: JSON.stringify({ pin: pinInput }),
-      });
+      const res = await api.vault.verify(pin);
       if (res.token) {
         setVaultToken(res.token);
-        setPinInput("");
+        setPin("");
+      } else {
+        setPinError("Invalid PIN");
       }
     } catch (err: any) {
-      setPinError(err.response?.data?.error || err.message || "Incorrect PIN");
-    } finally {
-      setIsVerifyingPin(false);
-    }
-  };
-
-  const handleSetupPin = async () => {
-    if (setupPinValue.length < 4) { setSetupPinStatus("PIN must be at least 4 characters."); return; }
-    if (setupPinValue !== setupPinConfirm) { setSetupPinStatus("PINs do not match."); return; }
-    try {
-      setSetupPinStatus("Saving...");
-      await api.request("/api/vault/setup-pin", {
-        method: "POST",
-        body: JSON.stringify({ pin: setupPinValue }),
-      });
-      setHasPin(true);
-      setSetupPinStatus("✓ PIN set successfully!");
-      setSetupPinValue("");
-      setSetupPinConfirm("");
-      setShowSetupPin(false);
-      setTimeout(() => setSetupPinStatus(""), 3000);
-    } catch (err: any) {
-      setSetupPinStatus(err.response?.data?.error || "Failed to set PIN");
-    }
-  };
-
-  const handleSendOtp = async () => {
-    setIsSendingOtp(true);
-    setPinError("");
-    try {
-      await api.request("/api/vault/email/send", { method: "POST" });
-      setShowOtp(true);
-      setResendCooldown(60);
-    } catch (err: any) {
-      setPinError(err.message || "Failed to send code");
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otp.length < 6) { setPinError("Code must be 6 digits"); return; }
-    setIsVerifyingPin(true);
-    setPinError("");
-    try {
-      const verifyRes = await api.request("/api/vault/email/verify", {
-        method: "POST",
-        body: JSON.stringify({ code: otp }),
-      });
-      if (verifyRes.token) {
-        setVaultToken(verifyRes.token);
-      }
-    } catch (err: any) {
-      setPinError(err.message || "Invalid or expired code");
+      setPinError(err.response?.data?.error || "Invalid PIN");
     } finally {
       setIsVerifyingPin(false);
     }
@@ -563,94 +457,28 @@ export default function PasswordsPage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Password Manager</h1>
           <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">
-            Your credentials are heavily encrypted on the server. Unlock using your passkey or email code.
+            Your credentials are heavily encrypted on the server. Enter your Vault PIN to unlock them.
           </p>
           
-          {showPinUnlock ? (
-            <form onSubmit={handleVerifyPin} className="w-full">
-              <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-4">Enter your vault PIN to unlock</p>
-              <input
-                type="password"
-                inputMode="numeric"
-                placeholder="Enter PIN"
-                value={pinInput}
-                onChange={e => { setPinInput(e.target.value); setPinError(""); }}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center text-2xl tracking-widest text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600"
-                autoFocus
-              />
-              {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mb-4">{pinError}</p>}
-              <button
-                type="submit"
-                disabled={isVerifyingPin || pinInput.length < 4}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-bold disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20 mb-3"
-              >
-                {isVerifyingPin ? "Verifying..." : "Unlock with PIN"}
-              </button>
-              <button type="button" onClick={() => { setShowPinUnlock(false); setPinInput(""); setPinError(""); }}
-                className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-sm font-medium py-2">
-                Back
-              </button>
-            </form>
-          ) : showOtp ? (
-            <form onSubmit={handleVerifyOtp} className="w-full">
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="6-Digit Code"
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center text-2xl tracking-widest text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600"
-                maxLength={6}
-                autoFocus
-              />
-              {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mb-4">{pinError}</p>}
-              <button
-                type="submit"
-                disabled={isVerifyingPin || otp.length < 6}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-medium disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20 mb-3"
-              >
-                {isVerifyingPin ? "Verifying..." : "Unlock Vault"}
-              </button>
-              <button type="button" onClick={() => setShowOtp(false)}
-                className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-sm font-medium py-2">
-                Back
-              </button>
-              <button 
-                type="button"
-                onClick={handleSendOtp}
-                disabled={resendCooldown > 0 || isSendingOtp}
-                className="w-full text-xs font-medium text-slate-400 hover:text-indigo-500 disabled:opacity-50 transition-colors mt-2"
-              >
-                {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : "Didn't receive it? Resend Code"}
-              </button>
-            </form>
-          ) : (
-            <div className="w-full space-y-3">
-              <button
-                onClick={handleVerifyWebAuthn}
-                disabled={isVerifyingPin}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-bold disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20"
-              >
-                {isVerifyingPin ? "Waiting for device..." : "Unlock with Windows Hello / Touch ID"}
-              </button>
-              {hasPin && (
-                <button
-                  onClick={() => { setShowPinUnlock(true); setPinError(""); }}
-                  className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-3 font-semibold transition-colors shadow-sm"
-                >
-                  <Key size={16} /> Unlock with PIN
-                </button>
-              )}
-              <button
-                onClick={handleSendOtp}
-                disabled={isSendingOtp}
-                className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 font-semibold disabled:opacity-50 transition-colors shadow-sm"
-              >
-                {isSendingOtp ? "Sending code..." : "Use Email Code Fallback"}
-              </button>
-              {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mt-4">{pinError}</p>}
-            </div>
-          )}
+          <form onSubmit={handleVerifyPin} className="w-full">
+            <input
+              type="password"
+              placeholder="Vault PIN"
+              value={pin}
+              onChange={e => setPin(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center text-2xl tracking-widest text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600"
+              maxLength={8}
+              autoFocus
+            />
+            {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mb-4">{pinError}</p>}
+            <button
+              type="submit"
+              disabled={isVerifyingPin || pin.length < 4}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-medium disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20"
+            >
+              {isVerifyingPin ? "Unlocking Vault..." : "Unlock Vault"}
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -952,74 +780,26 @@ export default function PasswordsPage() {
                   </div>
                 </div>
 
-                {/* PIN Management */}
+                {/* Master Password */}
                 <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Change Master PIN</h3>
+                  
+                  <div className="space-y-4">
                     <div>
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Vault PIN</h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                        {hasPin ? "A PIN is set. You can use it to quickly unlock your vault." : "Set a PIN as a quick way to unlock your vault."}
-                      </p>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Current PIN</label>
+                      <input type="password" value={currentPinInput} onChange={e => setCurrentPinInput(e.target.value)} placeholder="••••••••" className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
                     </div>
-                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${hasPin ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"}`}>
-                      {hasPin ? "ACTIVE" : "NOT SET"}
-                    </span>
-                  </div>
-
-                  {setupPinStatus && (
-                    <p className={`text-sm mb-4 ${setupPinStatus.includes("✓") ? "text-emerald-500" : setupPinStatus === "Saving..." ? "text-indigo-500" : "text-red-500"}`}>
-                      {setupPinStatus}
-                    </p>
-                  )}
-
-                  {showSetupPin ? (
-                    <div className="space-y-3">
-                      {hasPin && (
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Current PIN</label>
-                          <input type="password" value={currentPinInput} onChange={e => setCurrentPinInput(e.target.value)} placeholder="Enter current PIN"
-                            className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
-                        </div>
-                      )}
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">New PIN <span className="text-slate-400 font-normal">(min. 4 characters)</span></label>
-                        <input type="password" value={setupPinValue} onChange={e => setSetupPinValue(e.target.value)} placeholder="New PIN"
-                          className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Confirm PIN</label>
-                        <input type="password" value={setupPinConfirm} onChange={e => setSetupPinConfirm(e.target.value)} placeholder="Repeat PIN"
-                          className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
-                      </div>
-                      <div className="flex gap-3 pt-1">
-                        <button onClick={() => { setShowSetupPin(false); setSetupPinValue(""); setSetupPinConfirm(""); setCurrentPinInput(""); }}
-                          className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm">
-                          Cancel
-                        </button>
-                        <button onClick={async () => {
-                          if (hasPin) {
-                            if (setupPinValue.length < 4) { setSetupPinStatus("New PIN must be at least 4 characters."); return; }
-                            if (setupPinValue !== setupPinConfirm) { setSetupPinStatus("PINs do not match."); return; }
-                            try {
-                              setSetupPinStatus("Saving...");
-                              await api.request("/api/vault/change-pin", { method: "POST", body: JSON.stringify({ currentPin: currentPinInput, newPin: setupPinValue }) });
-                              setSetupPinStatus("✓ PIN changed successfully!");
-                              setShowSetupPin(false); setSetupPinValue(""); setSetupPinConfirm(""); setCurrentPinInput("");
-                              setTimeout(() => setSetupPinStatus(""), 3000);
-                            } catch (err: any) { setSetupPinStatus(err.response?.data?.error || "Failed to change PIN"); }
-                          } else { handleSetupPin(); }
-                        }}
-                          className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors text-sm">
-                          {hasPin ? "Change PIN" : "Set PIN"}
-                        </button>
-                      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">New PIN</label>
+                      <input type="password" value={newPinInput} onChange={e => setNewPinInput(e.target.value)} placeholder="••••••••" className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
                     </div>
-                  ) : (
-                    <button onClick={() => setShowSetupPin(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors text-sm">
-                      <Key size={15} /> {hasPin ? "Change PIN" : "Set Up PIN"}
+                    {pinChangeStatus && (
+                      <p className={`text-sm ${pinChangeStatus.includes('Success') ? 'text-green-500' : pinChangeStatus.includes('Updating') ? 'text-indigo-500' : 'text-red-500'}`}>{pinChangeStatus}</p>
+                    )}
+                    <button onClick={handleChangePin} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
+                      Update Master PIN
                     </button>
-                  )}
+                  </div>
                 </div>
 
               </div>
