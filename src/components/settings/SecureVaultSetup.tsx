@@ -116,7 +116,7 @@ export function SecureVaultSetup() {
       }
     } catch (err: any) {
       console.error(err);
-      setError("Authentication failed. Could not disable vault.");
+      setError(`Disable failed: ${err.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
