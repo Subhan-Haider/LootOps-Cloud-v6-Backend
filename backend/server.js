@@ -6192,7 +6192,7 @@ app.post("/api/vault/change-pin", requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/vault/forgot-pin", requireAuth, (req, res) => {
+app.post("/api/vault/forgot-pin", requireAuth, async (req, res) => {
   const db = readDb();
   const email = req.user.email || req.user.uid;
   if (!db.mfaCodes) db.mfaCodes = {};
@@ -6202,7 +6202,25 @@ app.post("/api/vault/forgot-pin", requireAuth, (req, res) => {
   db.mfaCodes[email] = { code, expiresAt };
   writeDb(db);
   
-  res.json({ success: true, message: "Verification code sent to email" });
+  try {
+    const mailOptions = {
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: email,
+      subject: "LootOps Vault - Reset PIN",
+      text: `Your LootOps Vault PIN reset code is: ${code}\nThis code will expire in 10 minutes.`,
+      html: `<h2>LootOps Vault PIN Reset</h2><p>Your PIN reset verification code is: <strong style="font-size:24px;color:#4f46e5;">${code}</strong></p><p>This code will expire in 10 minutes.</p>`,
+    };
+
+    if (transporter) {
+      await transporter.sendMail(mailOptions);
+    } else {
+      console.warn("SMTP not configured, Reset PIN OTP is:", code);
+    }
+    res.json({ success: true, message: "Verification code sent to email" });
+  } catch (error) {
+    console.error("Failed to send reset PIN email:", error);
+    res.status(500).json({ error: "Failed to send verification email" });
+  }
 });
 
 app.post("/api/vault/reset-pin", requireAuth, (req, res) => {
