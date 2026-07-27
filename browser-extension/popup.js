@@ -833,7 +833,7 @@ document.getElementById('btn-gen-back').addEventListener('click', () => showScre
 document.getElementById('btn-lock').addEventListener('click', async () => {
   await sendMsg({ type: 'LOCK_VAULT' });
   passwords = [];
-  showScreen('pin');
+  showScreen('otp');
   showToast('Vault locked');
 });
 
