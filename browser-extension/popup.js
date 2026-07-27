@@ -104,7 +104,8 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   const password = document.getElementById('login-password').value;
   const select = document.getElementById('login-base-url-select');
   const customInput = document.getElementById('login-base-url');
-  const baseUrl = select.value === 'custom' ? customInput.value.trim() : select.value;
+  let baseUrl = select.value === 'custom' ? customInput.value.trim() : select.value;
+  if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
   const errorEl = document.getElementById('login-error');
   const btn = document.getElementById('btn-login');
 
