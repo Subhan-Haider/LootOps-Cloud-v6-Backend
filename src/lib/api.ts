@@ -1,10 +1,9 @@
 import axios from "axios";
 import { auth } from "./firebase";
 
-// When deployed on Vercel: leave NEXT_PUBLIC_API_URL empty (or unset) and Next.js
-// rewrites in next.config.ts will proxy all API calls to the Express server.
-// When self-hosted (VPS): set NEXT_PUBLIC_API_URL to the Express server URL (e.g. https://server.lootops.me)
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+// We force API_BASE to be empty so it always uses the local domain,
+// which triggers the Next.js rewrites in next.config.ts to securely proxy to the backend.
+const API_BASE = "";
 
 export const apiInstance = axios.create({
   baseURL: API_BASE,
