@@ -141,7 +141,7 @@
                 <label class="block text-sm font-medium mb-1">API Key</label>
                 <input type="password" id="api_key" required class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="••••••••••••">
               </div>
-              <button type="submit" disabled="${loading}" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg px-4 py-2.5 transition-colors disabled:opacity-50">
+              <button type="submit" ${loading ? 'disabled' : ''} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg px-4 py-2.5 transition-colors disabled:opacity-50">
                 ${loading ? 'Authenticating...' : 'Sign In'}
               </button>
             </form>
@@ -193,7 +193,7 @@
           </div>
 
           <div class="flex justify-end">
-            <button type="submit" disabled="${loading}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl px-6 py-2.5 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2">
+            <button type="submit" ${loading ? 'disabled' : ''} class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl px-6 py-2.5 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2">
               ${loading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
