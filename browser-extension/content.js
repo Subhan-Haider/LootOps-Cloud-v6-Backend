@@ -126,10 +126,10 @@
       right: 0;
       min-width: 260px;
       max-width: 320px;
-      background: #1e1e2e;
-      border: 1px solid #3b3b58;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
       z-index: 2147483647;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       overflow: hidden;
@@ -143,18 +143,18 @@
         to { opacity: 1; transform: translateY(0); }
       }
       #lootops-dropdown * { box-sizing: border-box; }
-      .lootops-item:hover { background: rgba(99,102,241,0.15) !important; }
+      .lootops-item:hover { background: rgba(99,102,241,0.08) !important; }
     `;
     document.head.appendChild(style);
 
     const header = document.createElement('div');
-    header.style.cssText = 'padding: 10px 14px; border-bottom: 1px solid #3b3b58; display: flex; align-items: center; gap: 8px;';
+    header.style.cssText = 'padding: 10px 14px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px;';
     header.innerHTML = `
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
       </svg>
-      <span style="font-size:11px;font-weight:600;color:#a5b4fc;letter-spacing:0.05em;">LOOTOPS VAULT</span>
+      <span style="font-size:11px;font-weight:600;color:#4f46e5;letter-spacing:0.05em;">LOOTOPS VAULT</span>
     `;
     dropdown.appendChild(header);
 
@@ -174,12 +174,12 @@
         item.className = 'lootops-item';
         item.style.cssText = 'padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;';
         item.innerHTML = `
-          <div style="width:28px;height:28px;border-radius:6px;background:#2a2a3e;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">
+          <div style="width:28px;height:28px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">
             ${match.website ? `<img src="https://www.google.com/s2/favicons?domain=${match.website}&sz=32" style="width:16px;height:16px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
             <svg style="display:${match.website ? 'none' : 'flex'};width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:500;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(match.title || match.website || 'Untitled')}</div>
+            <div style="font-size:13px;font-weight:500;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(match.title || match.website || 'Untitled')}</div>
             <div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(match.username || '')}</div>
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m9 18 6-6-6-6"/></svg>
@@ -195,9 +195,9 @@
 
     // Footer actions
     const footer = document.createElement('div');
-    footer.style.cssText = 'padding: 8px 14px; border-top: 1px solid #3b3b58; display: flex; gap: 6px;';
+    footer.style.cssText = 'padding: 8px 14px; border-top: 1px solid #e2e8f0; display: flex; gap: 6px;';
     footer.innerHTML = `
-      <button id="lootops-open-vault" style="flex:1;padding:6px;border:none;border-radius:7px;background:rgba(99,102,241,0.15);color:#a5b4fc;font-size:11px;cursor:pointer;font-weight:500;">Open Vault</button>
+      <button id="lootops-open-vault" style="flex:1;padding:6px;border:none;border-radius:7px;background:rgba(99,102,241,0.12);color:#4f46e5;font-size:11px;cursor:pointer;font-weight:600;">Open Vault</button>
     `;
     footer.querySelector('#lootops-open-vault').addEventListener('click', () => {
       chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
@@ -309,14 +309,14 @@
       left: 50%;
       transform: translateX(-50%);
       z-index: 2147483647;
-      background: #1e1e2e;
-      border: 1px solid #6366f1;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 14px;
       padding: 14px 18px;
       display: flex;
       align-items: center;
       gap: 14px;
-      box-shadow: 0 8px 40px rgba(99,102,241,0.3);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.1);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       max-width: 420px;
       width: calc(100vw - 32px);
@@ -328,7 +328,7 @@
         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
       </svg>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:#e2e8f0;">Save password to LootOps Vault?</div>
+        <div style="font-size:13px;font-weight:600;color:#0f172a;">Save password to LootOps Vault?</div>
         <div style="font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(credentials.username || credentials.website)}</div>
       </div>
       <button id="lo-save-btn" style="padding:7px 14px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Save</button>
