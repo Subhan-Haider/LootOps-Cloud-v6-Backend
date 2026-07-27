@@ -547,33 +547,33 @@ export function SystemSettings() {
             </button>
           </form>
         </div>
+      </div>
 
-        {/* Client Backend URL (localStorage) */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 lg:col-span-1">
-          <div className="mb-4">
-            <h3 className="font-semibold text-gray-900">Frontend Backend Link</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Override the backend API URL for this browser (saved locally).
-              Leave blank to use the default configured URL.
-            </p>
-          </div>
-          <form onSubmit={handleSaveClientBackendUrl} className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              value={clientBackendUrl}
-              onChange={(e) => setClientBackendUrl(e.target.value)}
-              placeholder="e.g. https://server.lootops.me"
-              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-            <button
-              type="submit"
-              disabled={savingClientBackendUrl}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {savingClientBackendUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-            </button>
-          </form>
+      {/* Client Backend URL (localStorage) */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 lg:col-span-1 min-h-[350px]">
+        <div className="mb-4">
+          <h3 className="font-semibold text-gray-900">Frontend Backend Link</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Override the backend API URL for this browser (saved locally).
+            Leave blank to use the default configured URL.
+          </p>
         </div>
+        <form onSubmit={handleSaveClientBackendUrl} className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            value={clientBackendUrl}
+            onChange={(e) => setClientBackendUrl(e.target.value)}
+            placeholder="e.g. https://server.lootops.me"
+            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            type="submit"
+            disabled={savingClientBackendUrl}
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {savingClientBackendUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+          </button>
+        </form>
       </div>
 
       {/* Server Storage Path */}
