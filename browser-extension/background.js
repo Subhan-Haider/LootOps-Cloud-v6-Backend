@@ -158,13 +158,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
 
-        case 'VERIFY_VAULT': {
-          const data = await apiRequest('POST', '/api/vault/verify', { pin: msg.pin });
+        case 'SEND_OTP': {
+          await apiRequest('POST', '/api/vault/email/send');
+          sendResponse({ success: true });
+          break;
+        }
+
+        case 'VERIFY_OTP': {
+          const data = await apiRequest('POST', '/api/vault/email/verify', { code: msg.code });
           if (data.token) {
             await saveAuth({ vaultToken: data.token });
             sendResponse({ success: true });
           } else {
-            sendResponse({ success: false, error: 'Invalid PIN' });
+            sendResponse({ success: false, error: 'Invalid Code' });
           }
           break;
         }
@@ -216,6 +222,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
 
+        case 'GENERATE_TOTP': {
+          try {
+            const secretBase32 = msg.secret.replace(/\s+/g, '');
+            const base32chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            let bits = '';
+            for (let i = 0; i < secretBase32.length; i++) {
+              const val = base32chars.indexOf(secretBase32.charAt(i).toUpperCase());
+              if (val === -1) continue;
+              bits += val.toString(2).padStart(5, '0');
+            }
+            let hex = '';
+            for (let i = 0; i < bits.length - 4; i += 8) {
+              const byte = bits.substring(i, i + 8);
+              hex += parseInt(byte, 2).toString(16).padStart(2, '0');
+            }
+            const key = new Uint8Array(hex.match(/[\da-f]{2}/gi).map(h => parseInt(h, 16)));
+
+            const time = Math.floor(Date.now() / 1000 / 30);
+            const timeBuffer = new ArrayBuffer(8);
+            const timeView = new DataView(timeBuffer);
+            timeView.setUint32(4, time, false);
+
+            const cryptoKey = await crypto.subtle.importKey(
+              'raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+            );
+            
+            const signature = await crypto.subtle.sign('HMAC', cryptoKey, timeBuffer);
+            const hmac = new Uint8Array(signature);
+
+            const offset = hmac[hmac.length - 1] & 0xf;
+            const code = (
+              ((hmac[offset] & 0x7f) << 24) |
+              ((hmac[offset + 1] & 0xff) << 16) |
+              ((hmac[offset + 2] & 0xff) << 8) |
+              (hmac[offset + 3] & 0xff)
+            ) % 1000000;
+
+            sendResponse({ success: true, code: code.toString().padStart(6, '0') });
+          } catch (e) {
+            console.error('TOTP generation failed', e);
+            sendResponse({ success: false, error: e.message });
+          }
+          break;
+        }
+
         case 'GET_MATCHES_FOR_TAB': {
           const { vaultToken } = await getStoredAuth();
           if (!vaultToken) { sendResponse({ success: false, matches: [] }); break; }
@@ -236,18 +287,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           // Triggered from content script after form submit
           const { vaultToken } = await getStoredAuth();
           if (!vaultToken) { sendResponse({ success: false }); break; }
-          // Show notification asking user to save
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icons/icon48.png',
-            title: 'Save this password?',
-            message: `Save credentials for ${msg.website}?`,
-            buttons: [{ title: 'Save' }, { title: 'Never mind' }],
-            requireInteraction: true
-          });
-          // Store pending save data
-          await chrome.storage.session.set({ pendingSave: msg });
-          sendResponse({ success: true });
+          
+          // Automatically save without prompting
+          try {
+            await apiRequest('POST', '/api/passwords', msg, vaultToken);
+            // Optionally, show a non-interactive success notification
+            chrome.notifications.create({
+              type: 'basic',
+              iconUrl: 'icons/icon48.png',
+              title: 'Password Saved',
+              message: `Automatically saved credentials for ${msg.website}`
+            });
+            sendResponse({ success: true });
+          } catch (err) {
+            console.error('Failed to auto-save', err);
+            sendResponse({ success: false, error: err.message });
+          }
           break;
         }
 
@@ -306,4 +361,30 @@ chrome.notifications.onButtonClicked.addListener(async (notifId, btnIdx) => {
     }
   }
   chrome.notifications.clear(notifId);
+});
+
+// =============================================
+// CONTEXT MENUS
+// =============================================
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "lootops-fill",
+    title: "Fill Password/Data",
+    contexts: ["editable"]
+  });
+  
+  chrome.contextMenus.create({
+    id: "lootops-generate",
+    title: "Generate Strong Password",
+    contexts: ["editable"]
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "lootops-fill") {
+    chrome.tabs.sendMessage(tab.id, { type: 'FILL_FROM_CONTEXT_MENU' });
+  } else if (info.menuItemId === "lootops-generate") {
+    chrome.tabs.sendMessage(tab.id, { type: 'GENERATE_FROM_CONTEXT_MENU' });
+  }
 });

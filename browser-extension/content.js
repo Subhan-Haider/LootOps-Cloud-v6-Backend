@@ -46,6 +46,95 @@
     }).filter(f => f.pwdInput);
   }
 
+  function findCreditCardForms() {
+    const inputs = Array.from(document.querySelectorAll('input:not([disabled]):not([readonly])'));
+    const ccFields = {};
+    for (const input of inputs) {
+      const name = (input.name + input.id + input.placeholder + input.autocomplete).toLowerCase();
+      if (name.includes('cc-number') || name.includes('cardnumber') || name.includes('card-number') || name.includes('creditcard')) {
+        ccFields.cardNumber = input;
+      }
+      if (name.includes('cc-exp') || name.includes('expiry') || name.includes('exp-date') || name.includes('expiration')) {
+        ccFields.exp = input;
+      }
+      if (name.includes('cc-csc') || name.includes('cvc') || name.includes('cvv') || name.includes('security-code')) {
+        ccFields.cvv = input;
+      }
+    }
+    return Object.keys(ccFields).length > 0 ? ccFields : null;
+  }
+
+  function findIdentityForms() {
+    const inputs = Array.from(document.querySelectorAll('input:not([disabled]):not([readonly])'));
+    const idFields = {};
+    for (const input of inputs) {
+      const name = (input.name + input.id + input.placeholder + input.autocomplete).toLowerCase();
+      if (name.includes('identity') || name.includes('ssn') || name.includes('id-number')) {
+        idFields.identityNumber = input;
+      }
+    }
+    return Object.keys(idFields).length > 0 ? idFields : null;
+  }
+
+  function findTotpForms() {
+    const inputs = Array.from(document.querySelectorAll('input:not([disabled]):not([readonly])'));
+    for (const input of inputs) {
+      const name = (input.name + input.id + input.placeholder + input.autocomplete).toLowerCase();
+      // Look for indicators of a 2FA/TOTP field
+      if (
+        name.includes('totp') || 
+        name.includes('2fa') || 
+        name.includes('authcode') || 
+        name.includes('authenticator') || 
+        name.includes('mfa') ||
+        name.includes('otp') ||
+        (name.includes('code') && input.maxLength === 6) ||
+        (name.includes('token') && input.maxLength === 6) ||
+        (name.includes('verification') && input.maxLength === 6)
+      ) {
+        return input;
+      }
+    }
+    return null;
+  }
+
+  function fillCreditCard(fields, match) {
+    if (!match.customFields) return;
+    if (fields.cardNumber && match.customFields.cardNumber && !fields.cardNumber.dataset.lootopsAutofilled) {
+      fields.cardNumber.dataset.lootopsAutofilled = '1';
+      setNativeValue(fields.cardNumber, match.customFields.cardNumber);
+    }
+    if (fields.exp && match.customFields.exp && !fields.exp.dataset.lootopsAutofilled) {
+      fields.exp.dataset.lootopsAutofilled = '1';
+      setNativeValue(fields.exp, match.customFields.exp);
+    }
+    if (fields.cvv && match.customFields.cvv && !fields.cvv.dataset.lootopsAutofilled) {
+      fields.cvv.dataset.lootopsAutofilled = '1';
+      setNativeValue(fields.cvv, match.customFields.cvv);
+    }
+    showToast('✓ Credit Card filled!', '#10b981');
+  }
+
+  function fillIdentity(fields, match) {
+    if (!match.customFields) return;
+    if (fields.identityNumber && match.customFields.identityNumber && !fields.identityNumber.dataset.lootopsAutofilled) {
+      fields.identityNumber.dataset.lootopsAutofilled = '1';
+      setNativeValue(fields.identityNumber, match.customFields.identityNumber);
+      showToast('✓ Identity info filled!', '#10b981');
+    }
+  }
+
+  function fillTotp(input, match) {
+    if (!match.totpSecret || input.dataset.lootopsAutofilled) return;
+    input.dataset.lootopsAutofilled = '1';
+    chrome.runtime.sendMessage({ type: 'GENERATE_TOTP', secret: match.totpSecret }, (res) => {
+      if (res?.success && res.code) {
+        setNativeValue(input, res.code);
+        showToast('✓ 2FA Code Auto-Filled!', '#10b981');
+      }
+    });
+  }
+
   // =============================================
   // INJECT FILL BUTTON (key icon next to password field)
   // =============================================
@@ -408,8 +497,38 @@
         sendResponse({ hasForm: false });
       }
     }
+    if (msg.type === 'FILL_FROM_CONTEXT_MENU') {
+      if (lastRightClickedElement && savedMatches.length > 0) {
+        // If it's a password field, fill password. If text, fill username.
+        if (lastRightClickedElement.type === 'password') {
+          setNativeValue(lastRightClickedElement, savedMatches[0].password || '');
+        } else {
+          setNativeValue(lastRightClickedElement, savedMatches[0].username || '');
+        }
+        showToast('✓ Filled from Vault', '#10b981');
+      } else {
+        showToast('No saved credentials found', '#ef4444');
+      }
+      sendResponse({ success: true });
+    }
+    if (msg.type === 'GENERATE_FROM_CONTEXT_MENU') {
+      if (lastRightClickedElement) {
+        chrome.runtime.sendMessage({ type: 'GENERATE_PASSWORD', length: 16 }, (res) => {
+          if (res?.password) {
+            setNativeValue(lastRightClickedElement, res.password);
+            showToast('✓ Strong password generated', '#10b981');
+          }
+        });
+      }
+      sendResponse({ success: true });
+    }
     return true;
   });
+
+  let lastRightClickedElement = null;
+  document.addEventListener('contextmenu', (e) => {
+    lastRightClickedElement = e.target;
+  }, true);
 
   // =============================================
   // INIT
@@ -419,21 +538,66 @@
     // Get matching passwords for this domain
     chrome.runtime.sendMessage({ type: 'GET_MATCHES_FOR_TAB', hostname: HOSTNAME }, (res) => {
       savedMatches = res?.matches || [];
+      
+      // Auto-fill immediately if forms are already present
+      if (savedMatches.length > 0) {
+        autoFillAllForms();
+      }
     });
 
     // Observe DOM for dynamically added forms (SPAs)
     const observer = new MutationObserver(() => {
       const forms = findLoginForms();
-      forms.forEach(({ pwdInput }) => injectFillButton(pwdInput));
+      forms.forEach(({ pwdInput }) => {
+        injectFillButton(pwdInput);
+      });
+      if (savedMatches.length > 0) {
+        autoFillAllForms();
+      }
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Initial scan
+    // Initial scan to inject fill buttons
     const forms = findLoginForms();
     forms.forEach(({ pwdInput }) => injectFillButton(pwdInput));
 
     // Setup form capture
     setupFormCapture();
+  }
+
+  function autoFillAllForms() {
+    // Passwords
+    const pwdMatch = savedMatches.find(m => m.type === 'password' || !m.type);
+    if (pwdMatch) {
+      const forms = findLoginForms();
+      forms.forEach(({ pwdInput, userInput }) => {
+        if (!pwdInput.dataset.lootopsAutofilled) {
+          pwdInput.dataset.lootopsAutofilled = '1';
+          fillCredentials(pwdInput, userInput, pwdMatch);
+        }
+      });
+    }
+
+    // Credit Cards
+    const ccMatch = savedMatches.find(m => m.type === 'credit_card');
+    if (ccMatch) {
+      const ccFields = findCreditCardForms();
+      if (ccFields) fillCreditCard(ccFields, ccMatch);
+    }
+
+    // Identities
+    const idMatch = savedMatches.find(m => m.type === 'identity');
+    if (idMatch) {
+      const idFields = findIdentityForms();
+      if (idFields) fillIdentity(idFields, idMatch);
+    }
+
+    // 2FA / TOTP
+    const totpMatch = savedMatches.find(m => m.totpSecret);
+    if (totpMatch) {
+      const totpInput = findTotpForms();
+      if (totpInput) fillTotp(totpInput, totpMatch);
+    }
   }
 
   function escapeHtml(str) {

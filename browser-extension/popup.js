@@ -57,15 +57,21 @@ async function init() {
     }
   } catch {}
 
-  const auth = await sendMsg({ type: 'GET_AUTH' });
+  let auth;
+  try {
+    auth = await sendMsg({ type: 'GET_AUTH' });
+  } catch (err) {
+    document.body.innerHTML = `<div style="padding:20px;color:red;">Error: ${err.message}</div>`;
+    return;
+  }
 
   if (!auth.isLoggedIn) {
     const { baseUrl } = await chrome.storage.local.get('baseUrl');
     if (baseUrl) document.getElementById('login-base-url').value = baseUrl;
     showScreen('login');
   } else if (!auth.hasVault) {
-    document.getElementById('pin-email-label').textContent = auth.email || '';
-    showScreen('pin');
+    document.getElementById('otp-email-label').textContent = auth.email || '';
+    showScreen('otp');
   } else {
     await loadVault();
     showScreen('vault');
@@ -96,8 +102,8 @@ document.getElementById('btn-login').addEventListener('click', async () => {
     if (baseUrl) await sendMsg({ type: 'SET_BASE_URL', url: baseUrl });
     const res = await sendMsg({ type: 'SIGN_IN', email, password });
     if (res.success) {
-      document.getElementById('pin-email-label').textContent = res.email || email;
-      showScreen('pin');
+      document.getElementById('otp-email-label').textContent = res.email || email;
+      showScreen('otp');
     } else {
       showError(errorEl, res.error || 'Login failed');
     }
@@ -114,68 +120,60 @@ document.getElementById('login-password').addEventListener('keydown', (e) => {
 });
 
 // =============================================
-// PIN
+// OTP
 // =============================================
 
-document.querySelectorAll('.pin-key[data-val]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (pinValue.length >= 10) return; // safety max
-    pinValue += btn.dataset.val;
-    updatePinDots();
-  });
-});
-
-document.getElementById('pin-del').addEventListener('click', () => {
-  pinValue = pinValue.slice(0, -1);
-  updatePinDots();
-});
-
-document.getElementById('pin-confirm').addEventListener('click', () => {
-  if (pinValue.length < 4) return;
-  verifyPin();
-});
-
-document.getElementById('btn-signout-from-pin').addEventListener('click', async () => {
-  await sendMsg({ type: 'SIGN_OUT' });
-  showScreen('login');
-});
-
-function updatePinDots() {
-  const container = document.getElementById('pin-dots');
-  // Ensure we have enough dots for the current pin length (min 4)
-  const needed = Math.max(4, pinValue.length);
-  while (container.children.length < needed) {
-    container.appendChild(document.createElement('span'));
-  }
-  while (container.children.length > needed) {
-    container.removeChild(container.lastChild);
-  }
-  Array.from(container.children).forEach((dot, i) => {
-    dot.classList.toggle('filled', i < pinValue.length);
-  });
-}
-
-async function verifyPin() {
-  const errorEl = document.getElementById('pin-error');
+document.getElementById('btn-send-otp').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-send-otp');
+  const errorEl = document.getElementById('otp-error');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
   errorEl.classList.add('hidden');
-
   try {
-    const res = await sendMsg({ type: 'VERIFY_VAULT', pin: pinValue });
-    pinValue = '';
-    updatePinDots();
+    const res = await sendMsg({ type: 'SEND_OTP' });
+    if (res.success) {
+      btn.style.display = 'none';
+      document.getElementById('otp-input-section').classList.remove('hidden');
+    } else {
+      showError(errorEl, res.error || 'Failed to send OTP');
+      btn.disabled = false;
+      btn.textContent = 'Send Code';
+    }
+  } catch (err) {
+    showError(errorEl, err.message || 'Connection failed');
+    btn.disabled = false;
+    btn.textContent = 'Send Code';
+  }
+});
 
+document.getElementById('btn-verify-otp').addEventListener('click', async () => {
+  const code = document.getElementById('otp-input').value;
+  if (code.length < 6) return;
+  const btn = document.getElementById('btn-verify-otp');
+  const errorEl = document.getElementById('otp-error');
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  errorEl.classList.add('hidden');
+  try {
+    const res = await sendMsg({ type: 'VERIFY_OTP', code });
     if (res.success) {
       await loadVault();
       showScreen('vault');
     } else {
-      showError(errorEl, res.error || 'Incorrect PIN');
+      showError(errorEl, res.error || 'Invalid Code');
     }
   } catch (err) {
-    pinValue = '';
-    updatePinDots();
     showError(errorEl, 'Connection failed. Is the server running?');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Verify Code';
   }
-}
+});
+
+document.getElementById('btn-signout-from-otp').addEventListener('click', async () => {
+  await sendMsg({ type: 'SIGN_OUT' });
+  showScreen('login');
+});
 
 // =============================================
 // VAULT
@@ -192,7 +190,7 @@ async function loadVault() {
       updateSiteBanner();
     } else {
       // Vault locked
-      showScreen('pin');
+      showScreen('otp');
     }
   } catch (err) {
     console.error('Failed to load vault', err);
@@ -312,6 +310,16 @@ function renderList() {
     });
 
     list.appendChild(item);
+
+    // Fix broken favicons (inline onerror is blocked by extension CSP)
+    const img = item.querySelector('.site-icon');
+    if (img) {
+      img.addEventListener('error', () => {
+        img.style.display = 'none';
+        const fallback = item.querySelector('.fallback-icon');
+        if (fallback) fallback.style.display = 'block';
+      });
+    }
   });
 }
 
@@ -325,10 +333,13 @@ function getEntryIcon(entry) {
   if (entry.type === 'api_key') {
     return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
   }
+  const defaultSvg = `<svg class="fallback-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+
   if (entry.website) {
-    return `<img src="https://www.google.com/s2/favicons?domain=${entry.website}&sz=32" width="16" height="16" onerror="this.style.display='none'">`;
+    return `<img src="https://www.google.com/s2/favicons?domain=${entry.website}&sz=32" width="16" height="16" class="site-icon">
+            <svg class="fallback-icon" style="display:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
   }
-  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+  return defaultSvg;
 }
 
 function getEntrySubtitle(entry) {

@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import * as OTPAuth from "otpauth";
 import Papa from "papaparse";
+import { startAuthentication } from "@simplewebauthn/browser";
 
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -81,9 +82,11 @@ export default function PasswordsPage() {
 
   // Vault State
   const [vaultToken, setVaultToken] = useState<string | null>(null);
-  const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [showOtp, setShowOtp] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
 
   // Auto-lock Ref
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -202,21 +205,58 @@ export default function PasswordsPage() {
     }
   };
 
-  const handleVerifyPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin.length < 4) { setPinError("PIN is too short"); return; }
+  const handleVerifyWebAuthn = async () => {
     setIsVerifyingPin(true);
     setPinError("");
     try {
-      const res = await api.vault.verify(pin);
-      if (res.token) {
-        setVaultToken(res.token);
-        setPin("");
+      const options = await api.request("/api/vault/webauthn/authenticate", { method: "GET" });
+      const asseResp = await startAuthentication({ optionsJSON: options });
+
+      const verifyRes = await api.request("/api/vault/webauthn/authenticate", {
+        method: "POST",
+        body: JSON.stringify(asseResp),
+      });
+
+      if (verifyRes.token) {
+        setVaultToken(verifyRes.token);
       } else {
-        setPinError("Invalid PIN");
+        setPinError("Invalid authentication");
       }
     } catch (err: any) {
-      setPinError(err.response?.data?.error || "Invalid PIN");
+      setPinError(err.message || "Authentication cancelled or failed");
+    } finally {
+      setIsVerifyingPin(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setIsSendingOtp(true);
+    setPinError("");
+    try {
+      await api.request("/api/vault/email/send", { method: "POST" });
+      setShowOtp(true);
+    } catch (err: any) {
+      setPinError(err.message || "Failed to send code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length < 6) { setPinError("Code must be 6 digits"); return; }
+    setIsVerifyingPin(true);
+    setPinError("");
+    try {
+      const verifyRes = await api.request("/api/vault/email/verify", {
+        method: "POST",
+        body: JSON.stringify({ code: otp }),
+      });
+      if (verifyRes.token) {
+        setVaultToken(verifyRes.token);
+      }
+    } catch (err: any) {
+      setPinError(err.message || "Invalid or expired code");
     } finally {
       setIsVerifyingPin(false);
     }
@@ -457,28 +497,56 @@ export default function PasswordsPage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Password Manager</h1>
           <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">
-            Your credentials are heavily encrypted on the server. Enter your Vault PIN to unlock them.
+            Your credentials are heavily encrypted on the server. Unlock using your passkey or email code.
           </p>
           
-          <form onSubmit={handleVerifyPin} className="w-full">
-            <input
-              type="password"
-              placeholder="Vault PIN"
-              value={pin}
-              onChange={e => setPin(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center text-2xl tracking-widest text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600"
-              maxLength={8}
-              autoFocus
-            />
-            {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mb-4">{pinError}</p>}
-            <button
-              type="submit"
-              disabled={isVerifyingPin || pin.length < 4}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-medium disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20"
-            >
-              {isVerifyingPin ? "Unlocking Vault..." : "Unlock Vault"}
-            </button>
-          </form>
+          {showOtp ? (
+            <form onSubmit={handleVerifyOtp} className="w-full">
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="6-Digit Code"
+                value={otp}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center text-2xl tracking-widest text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600"
+                maxLength={6}
+                autoFocus
+              />
+              {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mb-4">{pinError}</p>}
+              <button
+                type="submit"
+                disabled={isVerifyingPin || otp.length < 6}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-medium disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20 mb-3"
+              >
+                {isVerifyingPin ? "Verifying..." : "Unlock Vault"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowOtp(false)}
+                className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-sm font-medium py-2"
+              >
+                Back to Passkey
+              </button>
+            </form>
+          ) : (
+            <div className="w-full space-y-3">
+              <button
+                onClick={handleVerifyWebAuthn}
+                disabled={isVerifyingPin}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-bold disabled:opacity-50 transition-colors shadow-lg shadow-indigo-500/20"
+              >
+                {isVerifyingPin ? "Waiting for device..." : "Unlock with Windows Hello / Touch ID"}
+              </button>
+              <button
+                onClick={handleSendOtp}
+                disabled={isSendingOtp}
+                className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 font-semibold disabled:opacity-50 transition-colors shadow-sm"
+              >
+                {isSendingOtp ? "Sending code..." : "Use Email Code Fallback"}
+              </button>
+              {pinError && <p className="text-red-500 dark:text-red-400 text-sm text-center mt-4">{pinError}</p>}
+            </div>
+          )}
         </div>
       </div>
     );
