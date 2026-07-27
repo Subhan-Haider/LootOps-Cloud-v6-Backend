@@ -6073,7 +6073,7 @@ app.post("/api/vault/email/send", requireAuth, async (req, res) => {
     }
 
     const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.EMAIL_USER,
+      from: `"Storage Admin" <${process.env.SMTP_USER}>`,
       to: email,
       subject: "LootOps Vault Verification Code",
       text: `Your LootOps Vault verification code is: ${code}\nThis code will expire in 10 minutes.`,
@@ -6155,7 +6155,7 @@ app.get("/api/vault/webauthn/register", requireAuth, async (req, res) => {
   const email = req.user.email || req.user.uid;
   
   const rpName = 'LootOps Vault';
-  const rpID = req.hostname;
+  const rpID = req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname;
 
   const user = { id: email, name: email, displayName: email };
   const userPasskeys = db.vaults?.[email]?.passkeys || [];
@@ -6195,7 +6195,7 @@ app.post("/api/vault/webauthn/register", requireAuth, async (req, res) => {
       response: req.body,
       expectedChallenge,
       expectedOrigin: req.headers.origin || `https://${req.hostname}`,
-      expectedRPID: req.hostname,
+      expectedRPID: req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname,
     });
 
     if (verification.verified && verification.registrationInfo) {
@@ -6231,8 +6231,9 @@ app.get("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
 
   if (userPasskeys.length === 0) return res.status(400).json({ error: "No passkeys registered" });
 
+  const rpID = req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname;
   const options = await generateAuthenticationOptions({
-    rpID: req.hostname,
+    rpID,
     allowCredentials: userPasskeys.map(pk => ({
       id: Buffer.from(pk.credentialID, 'base64url'),
       type: 'public-key',
@@ -6264,7 +6265,7 @@ app.post("/api/vault/webauthn/authenticate", requireAuth, async (req, res) => {
       response: req.body,
       expectedChallenge,
       expectedOrigin: req.headers.origin || `https://${req.hostname}`,
-      expectedRPID: req.hostname,
+      expectedRPID: req.headers.origin ? new URL(req.headers.origin).hostname : req.hostname,
       authenticator: {
         credentialID: Buffer.from(passkey.credentialID, 'base64url'),
         credentialPublicKey: Buffer.from(passkey.credentialPublicKey, 'base64url'),
