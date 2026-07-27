@@ -31,7 +31,9 @@ import {
   ChevronDown,
   ChevronRight,
   Star,
-  Settings
+  Settings,
+  Terminal,
+  Globe
 } from "lucide-react";
 import * as OTPAuth from "otpauth";
 import Papa from "papaparse";
@@ -71,7 +73,7 @@ export default function PasswordsPage() {
   const [totpSecret, setTotpSecret] = useState("");
   const [currentTotp, setCurrentTotp] = useState("");
   const [totpProgress, setTotpProgress] = useState(0);
-  const [entryType, setEntryType] = useState<"password"|"credit_card"|"identity">("password");
+  const [entryType, setEntryType] = useState<"password"|"credit_card"|"identity"|"api_key">("password");
   const [category, setCategory] = useState("Personal");
   const [customFields, setCustomFields] = useState<any>({});
   const [filterCategory, setFilterCategory] = useState("All");
@@ -596,12 +598,13 @@ export default function PasswordsPage() {
                         )}
                         {!selectionMode && (
                           <div className="shrink-0 text-slate-400 dark:text-slate-500 w-6 h-6 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800">
-                            {entry.type === 'credit_card' ? <CreditCard size={14} /> : 
-                             entry.type === 'identity' ? <User size={14} /> : 
-                             entry.website ? (
-                               <img src={`https://www.google.com/s2/favicons?domain=${entry.website}&sz=64`} alt="" className="w-4 h-4 rounded-sm" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
-                             ) : <Key size={14} />}
-                             {entry.website && <Key size={14} className="hidden" />}
+                             {entry.type === 'credit_card' ? <CreditCard size={14} /> : 
+                              entry.type === 'identity' ? <User size={14} /> :
+                              entry.type === 'api_key' ? <Terminal size={14} className="text-emerald-500" /> :
+                              entry.website ? (
+                                <img src={`https://www.google.com/s2/favicons?domain=${entry.website}&sz=64`} alt="" className="w-4 h-4 rounded-sm" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
+                              ) : <Key size={14} />}
+                             {entry.website && entry.type !== 'api_key' && <Key size={14} className="hidden" />}
                           </div>
                         )}
                         <div className="overflow-hidden flex items-center">
@@ -913,6 +916,7 @@ export default function PasswordsPage() {
                     <option value="password">Login / Password</option>
                     <option value="credit_card">Credit Card</option>
                     <option value="identity">Identity / Social Security</option>
+                    <option value="api_key">API Key / Token</option>
                   </select>
                 </div>
                 <div className="flex-1">
@@ -931,7 +935,7 @@ export default function PasswordsPage() {
               {/* Username Field */}
               <div>
                 <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">
-                  {entryType === 'password' ? 'Username / Email' : entryType === 'credit_card' ? 'Cardholder Name' : 'Full Name'}
+                  {entryType === 'password' ? 'Username / Email' : entryType === 'credit_card' ? 'Cardholder Name' : entryType === 'api_key' ? 'Service / Provider Name' : 'Full Name'}
                 </label>
                 <div className="flex items-center">
                   {isEditing ? (
@@ -1022,7 +1026,95 @@ export default function PasswordsPage() {
                 </div>
               )}
 
+              {/* API Key Fields */}
+              {entryType === 'api_key' && (
+                <div className="space-y-4">
+                  {/* API Key */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1"><Terminal size={12} /> API Key / Token</label>
+                    <div className="flex items-center">
+                      {isEditing ? (
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={customFields?.apiKey || ""}
+                          onChange={(e) => setCustomFields({ ...customFields, apiKey: e.target.value })}
+                          className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                          placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                        />
+                      ) : (
+                        <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm">
+                          {customFields?.apiKey ? (showPassword ? customFields.apiKey : '••••••••••••••••••••••••') : <span className="text-slate-400 italic">None</span>}
+                        </div>
+                      )}
+                      {!isEditing && customFields?.apiKey && (
+                        <button onClick={() => copyToClipboard(customFields.apiKey, 'apiKey')} className="ml-2 p-2 rounded-lg text-slate-400 hover:text-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0">
+                          {copiedField === 'apiKey' ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+                        </button>
+                      )}
+                      {!isEditing && customFields?.apiKey && (
+                        <button onClick={() => setShowPassword(!showPassword)} className="ml-1 p-2 rounded-lg text-slate-400 hover:text-slate-600 transition-colors shrink-0">
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Client Secret */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">Client Secret (optional)</label>
+                    <div className="flex items-center">
+                      {isEditing ? (
+                        <input
+                          type="password"
+                          value={customFields?.clientSecret || ""}
+                          onChange={(e) => setCustomFields({ ...customFields, clientSecret: e.target.value })}
+                          className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                          placeholder="Client secret or OAuth secret"
+                        />
+                      ) : (
+                        <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm">
+                          {customFields?.clientSecret ? '••••••••••••••••' : <span className="text-slate-400 italic">None</span>}
+                        </div>
+                      )}
+                      {!isEditing && customFields?.clientSecret && (
+                        <button onClick={() => copyToClipboard(customFields.clientSecret, 'clientSecret')} className="ml-2 p-2 rounded-lg text-slate-400 hover:text-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0">
+                          {copiedField === 'clientSecret' ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Base URL + Environment */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1"><Globe size={12} /> Base URL</label>
+                      {isEditing ? (
+                        <input type="text" value={customFields?.baseUrl || ""} onChange={e => setCustomFields({...customFields, baseUrl: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm" placeholder="https://api.example.com"/>
+                      ) : <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm truncate">{customFields?.baseUrl || <span className="text-slate-400 italic">None</span>}</div>}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">Environment</label>
+                      {isEditing ? (
+                        <select value={customFields?.environment || 'production'} onChange={e => setCustomFields({...customFields, environment: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100">
+                          <option value="production">Production</option>
+                          <option value="staging">Staging</option>
+                          <option value="development">Development</option>
+                          <option value="test">Test</option>
+                        </select>
+                      ) : (
+                        <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50 rounded-lg px-3 py-2">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            customFields?.environment === 'production' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                            customFields?.environment === 'staging' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                            'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                          }`}>{customFields?.environment || 'production'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Password Field */}
+              {entryType !== 'api_key' && (
               <div>
                 <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between">
                   {entryType === 'credit_card' ? 'Card PIN' : 'Password'}
@@ -1062,6 +1154,7 @@ export default function PasswordsPage() {
                   )}
                 </div>
               </div>
+              )}
 
               {/* Authenticator (TOTP) Field */}
               <div>
