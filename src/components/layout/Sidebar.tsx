@@ -41,7 +41,7 @@ const navigation = [
   { name: "Redundant Backups", href: "/backups", icon: Database },
   { name: "Uploads", href: "/uploads", icon: UploadCloud },
   { name: "Settings", href: "/settings", icon: Settings },
-  { name: "Secure Vault", href: "/hide", icon: Lock },
+
   { name: "Server Watchdog", href: "/watchdog", icon: Activity },
   { name: "Deployments", href: "/deployments", icon: Rocket },
   { name: "Developer API", href: "/developer", icon: Code },
