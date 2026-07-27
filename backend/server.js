@@ -5851,6 +5851,45 @@ app.post("/api/admin/settings", requireAdminUIAuth, (req, res) => {
   res.json({ success: true, settings: db.settings });
 });
 
+app.get("/api/admin/users", requireAdminUIAuth, async (req, res) => {
+  if (!admin.apps.length) return res.status(500).json({ error: "Firebase not configured" });
+  try {
+    const listUsersResult = await admin.auth().listUsers(1000);
+    const users = listUsersResult.users.map(u => ({
+      uid: u.uid,
+      email: u.email,
+      displayName: u.displayName,
+      disabled: u.disabled,
+      creationTime: u.metadata.creationTime,
+      lastSignInTime: u.metadata.lastSignInTime,
+    }));
+    res.json({ success: true, users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/users/:uid/status", requireAdminUIAuth, async (req, res) => {
+  if (!admin.apps.length) return res.status(500).json({ error: "Firebase not configured" });
+  const { disabled } = req.body;
+  try {
+    await admin.auth().updateUser(req.params.uid, { disabled: !!disabled });
+    res.json({ success: true, disabled: !!disabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/admin/users/:uid", requireAdminUIAuth, async (req, res) => {
+  if (!admin.apps.length) return res.status(500).json({ error: "Firebase not configured" });
+  try {
+    await admin.auth().deleteUser(req.params.uid);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // =====================
 // WATCHDOG API
 // =====================
