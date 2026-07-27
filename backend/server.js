@@ -5286,6 +5286,10 @@ app.post("/api/deployments/commit/:id", requireAuth, async (req, res) => {
 });
 
 app.get("/api/deployments/tunnel-cname", requireAuth, (req, res) => {
+  const db = readDb();
+  if (db.settings?.tunnelCname) {
+    return res.json({ cname: db.settings.tunnelCname });
+  }
   res.json({ cname: cloudflareManager.getTunnelCname() });
 });
 
