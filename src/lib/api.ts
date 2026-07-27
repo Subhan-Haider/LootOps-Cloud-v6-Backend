@@ -131,8 +131,15 @@ export const api = {
   request: async (url: string, config?: any) => {
     let method = config?.method || "GET";
     let data = config?.body ? JSON.parse(config.body) : undefined;
-    const res = await apiInstance.request({ url, method, data });
-    return res.data;
+    try {
+      const res = await apiInstance.request({ url, method, data });
+      return res.data;
+    } catch (err: any) {
+      if (err.response && err.response.data && err.response.data.error) {
+        throw new Error(err.response.data.error);
+      }
+      throw err;
+    }
   },
 
   // Files
