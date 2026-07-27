@@ -71,7 +71,20 @@ async function init() {
 
   if (!auth.isLoggedIn) {
     const { baseUrl } = await chrome.storage.local.get('baseUrl');
-    if (baseUrl) document.getElementById('login-base-url').value = baseUrl;
+    if (baseUrl) {
+      const select = document.getElementById('login-base-url-select');
+      const customInput = document.getElementById('login-base-url');
+      // Check if the saved URL matches one of the presets
+      const matchingOption = Array.from(select.options).find(o => o.value === baseUrl && o.value !== 'custom');
+      if (matchingOption) {
+        select.value = baseUrl;
+      } else {
+        // It's a custom URL
+        select.value = 'custom';
+        customInput.style.display = '';
+        customInput.value = baseUrl;
+      }
+    }
     showScreen('login');
   } else if (!auth.hasVault) {
     document.getElementById('otp-email-label').textContent = auth.email || '';
@@ -89,7 +102,9 @@ async function init() {
 document.getElementById('btn-login').addEventListener('click', async () => {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  const baseUrl = document.getElementById('login-base-url').value.trim();
+  const select = document.getElementById('login-base-url-select');
+  const customInput = document.getElementById('login-base-url');
+  const baseUrl = select.value === 'custom' ? customInput.value.trim() : select.value;
   const errorEl = document.getElementById('login-error');
   const btn = document.getElementById('btn-login');
 
@@ -121,6 +136,19 @@ document.getElementById('btn-login').addEventListener('click', async () => {
 
 document.getElementById('login-password').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('btn-login').click();
+});
+
+// Show/hide custom URL input when dropdown changes
+document.getElementById('login-base-url-select').addEventListener('change', function() {
+  const customInput = document.getElementById('login-base-url');
+  if (this.value === 'custom') {
+    customInput.style.display = '';
+    customInput.value = '';
+    customInput.focus();
+  } else {
+    customInput.style.display = 'none';
+    customInput.value = '';
+  }
 });
 
 // =============================================

@@ -36,7 +36,29 @@
 
       <div class="form-group">
         <label>Server URL</label>
-        <input type="url" id="login-base-url" placeholder="https://lootops-cloud.subhan.tech" />
+        <select id="login-base-url-select" style="
+          width:100%;
+          padding: 10px 12px;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 10px;
+          font-size: 13px;
+          color: #0f172a;
+          background: #fff;
+          outline: none;
+          cursor: pointer;
+          appearance: none;
+          background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 36px;
+        ">
+          <option value="https://server.subhan.tech">server.subhan.tech</option>
+          <option value="https://server.lootops.me">server.lootops.me</option>
+          <option value="https://storage.lootops.me">storage.lootops.me</option>
+          <option value="https://storage.subhan.tech">storage.subhan.tech</option>
+          <option value="custom">✏️ Custom URL...</option>
+        </select>
+        <input type="url" id="login-base-url" placeholder="https://your-server.example.com" style="display:none; margin-top:8px;" />
       </div>
 
       <div id="login-error" class="error-msg hidden"></div>
