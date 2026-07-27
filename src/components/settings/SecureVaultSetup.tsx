@@ -16,6 +16,15 @@ export function SecureVaultSetup() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      interval = setInterval(() => setResendCooldown((c) => c - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
 
   const loadStatus = async () => {
     try {
@@ -34,6 +43,7 @@ export function SecureVaultSetup() {
     try {
       await api.request("/api/vault/email/send", { method: "POST" });
       setStep("verify_email");
+      setResendCooldown(60);
       success("Verification code sent to your email!");
     } catch (err: any) {
       setError(err.message || "Failed to send verification email.");
@@ -228,6 +238,15 @@ export function SecureVaultSetup() {
             </button>
             <button onClick={handleVerifyEmail} disabled={loading || otp.length < 6} className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-50 transition-all">
               {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Verify Code"}
+            </button>
+          </div>
+          <div className="text-center mt-2">
+            <button 
+              onClick={handleSendEmail} 
+              disabled={resendCooldown > 0 || loading}
+              className="text-xs font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50 transition-colors"
+            >
+              {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : "Didn't receive it? Resend Code"}
             </button>
           </div>
         </div>

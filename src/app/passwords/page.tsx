@@ -87,7 +87,16 @@ export default function PasswordsPage() {
   const [otp, setOtp] = useState("");
   const [showOtp, setShowOtp] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [hasPin, setHasPin] = useState(false);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      interval = setInterval(() => setResendCooldown((c) => c - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
   const [showPinUnlock, setShowPinUnlock] = useState(false);
   const [pinInput, setPinInput] = useState("");
   // PIN setup/change state
@@ -291,6 +300,7 @@ export default function PasswordsPage() {
     try {
       await api.request("/api/vault/email/send", { method: "POST" });
       setShowOtp(true);
+      setResendCooldown(60);
     } catch (err: any) {
       setPinError(err.message || "Failed to send code");
     } finally {
@@ -604,6 +614,14 @@ export default function PasswordsPage() {
               <button type="button" onClick={() => setShowOtp(false)}
                 className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-sm font-medium py-2">
                 Back
+              </button>
+              <button 
+                type="button"
+                onClick={handleSendOtp}
+                disabled={resendCooldown > 0 || isSendingOtp}
+                className="w-full text-xs font-medium text-slate-400 hover:text-indigo-500 disabled:opacity-50 transition-colors mt-2"
+              >
+                {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : "Didn't receive it? Resend Code"}
               </button>
             </form>
           ) : (
