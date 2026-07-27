@@ -205,15 +205,24 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// RATE LIMITER (Uploads & Admin actions)
-const vaultLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+// RATE LIMITER - Strict: authentication attempts
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
   validate: { xForwardedForHeader: false },
   message: { error: "Too many authentication attempts, please try again later." }
 });
+
+// RATE LIMITER - Relaxed: vault operations (OTP send/verify, settings, etc.)
+const vaultLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60,
+  validate: { xForwardedForHeader: false },
+  message: { error: "Too many requests, please try again later." }
+});
+
 app.use("/api/vault", vaultLimiter);
-app.use("/api/auth", vaultLimiter);
+app.use("/api/auth", authLimiter);
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
