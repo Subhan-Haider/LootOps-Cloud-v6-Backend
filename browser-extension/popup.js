@@ -24,6 +24,10 @@ let revealedFields = new Set();
 // =============================================
 
 function showScreen(name) {
+  // Clear TOTP timer when navigating away from detail screen
+  if (currentScreen === 'detail' && name !== 'detail') {
+    if (totpTimerInterval) { clearInterval(totpTimerInterval); totpTimerInterval = null; }
+  }
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
   const screen = document.getElementById(`screen-${name}`);
   if (screen) screen.classList.remove('hidden');
@@ -482,7 +486,37 @@ function renderDetail(entry) {
     fields.push(`<div class="detail-field"><div class="detail-label">Notes</div><div class="detail-value" style="font-family:inherit;white-space:pre-wrap;">${esc(entry.notes)}</div></div>`);
   }
 
+  // TOTP / 2FA section
+  if (entry.totpSecret) {
+    fields.push(`
+      <div class="detail-field">
+        <div class="detail-label">2FA Authenticator Code</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+          <div style="position:relative;width:44px;height:44px;flex-shrink:0;">
+            <svg width="44" height="44" viewBox="0 0 44 44">
+              <circle cx="22" cy="22" r="18" fill="none" stroke="#e2e8f0" stroke-width="3"/>
+              <circle id="totp-ring" cx="22" cy="22" r="18" fill="none" stroke="#6366f1" stroke-width="3"
+                stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="0"
+                style="transform:rotate(-90deg);transform-origin:center;transition:stroke-dashoffset 1s linear;"/>
+            </svg>
+            <div id="totp-seconds" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#6366f1;">30</div>
+          </div>
+          <div style="flex:1;">
+            <div id="totp-code" style="font-size:24px;font-weight:800;letter-spacing:6px;color:#0f172a;font-family:monospace;">------</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Refreshes every 30s</div>
+          </div>
+          <button id="totp-copy-btn" style="padding:6px 10px;background:rgba(99,102,241,0.1);border:none;border-radius:8px;color:#6366f1;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+        </div>
+      </div>
+    `);
+  }
+
   content.innerHTML = fields.join('');
+
+  // Start TOTP timer if applicable
+  if (entry.totpSecret) {
+    startTotpTimer(entry.totpSecret);
+  }
 
   // Bind fill button
   content.querySelector('#detail-fill-btn')?.addEventListener('click', () => fillInTab(entry));
@@ -552,6 +586,68 @@ function detailField(label, value, fieldKey, isSecret) {
       </div>
     </div>
   `;
+}
+
+// =============================================
+// TOTP LIVE TIMER
+// =============================================
+
+let totpTimerInterval = null;
+
+function startTotpTimer(secret) {
+  if (totpTimerInterval) clearInterval(totpTimerInterval);
+
+  const CIRCUMFERENCE = 2 * Math.PI * 18; // r=18 → ~113.1
+
+  function updateTotp() {
+    const secondsNow = Math.floor(Date.now() / 1000);
+    const secsInPeriod = secondsNow % 30;
+    const secsLeft = 30 - secsInPeriod;
+
+    const ring = document.getElementById('totp-ring');
+    const secsEl = document.getElementById('totp-seconds');
+    const codeEl = document.getElementById('totp-code');
+
+    if (!ring || !secsEl || !codeEl) {
+      clearInterval(totpTimerInterval);
+      return;
+    }
+
+    // Update ring dashoffset (full = 0 offset, empty = full circumference)
+    const progress = secsLeft / 30;
+    ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+
+    // Change color to red when <= 5s
+    const ringColor = secsLeft <= 5 ? '#ef4444' : '#6366f1';
+    ring.style.stroke = ringColor;
+    secsEl.style.color = ringColor;
+    secsEl.textContent = secsLeft;
+
+    // Refresh code at start of new period
+    if (secsInPeriod === 0 || codeEl.textContent === '------') {
+      sendMsg({ type: 'GENERATE_TOTP', secret }).then(res => {
+        if (res?.success && codeEl) {
+          codeEl.textContent = res.code;
+          // Bind copy button with fresh code
+          const copyBtn = document.getElementById('totp-copy-btn');
+          if (copyBtn) copyBtn.onclick = () => { copyText(res.code); showToast('2FA Code copied!'); };
+        }
+      }).catch(() => {});
+    }
+  }
+
+  // Initial fetch immediately
+  sendMsg({ type: 'GENERATE_TOTP', secret }).then(res => {
+    const codeEl = document.getElementById('totp-code');
+    if (res?.success && codeEl) {
+      codeEl.textContent = res.code;
+      const copyBtn = document.getElementById('totp-copy-btn');
+      if (copyBtn) copyBtn.onclick = () => { copyText(res.code); showToast('2FA Code copied!'); };
+    }
+  }).catch(() => {});
+
+  updateTotp();
+  totpTimerInterval = setInterval(updateTotp, 1000);
 }
 
 // =============================================

@@ -284,25 +284,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         case 'SAVE_CAPTURED': {
-          // Triggered from content script after form submit
+          // Triggered from content script after form submit on a new site
           const { vaultToken } = await getStoredAuth();
           if (!vaultToken) { sendResponse({ success: false }); break; }
-          
-          // Automatically save without prompting
-          try {
-            await apiRequest('POST', '/api/passwords', msg, vaultToken);
-            // Optionally, show a non-interactive success notification
-            chrome.notifications.create({
-              type: 'basic',
-              iconUrl: 'icons/icon48.png',
-              title: 'Password Saved',
-              message: `Automatically saved credentials for ${msg.website}`
-            });
-            sendResponse({ success: true });
-          } catch (err) {
-            console.error('Failed to auto-save', err);
-            sendResponse({ success: false, error: err.message });
-          }
+
+          // Store credentials temporarily so notification button click can save them
+          await chrome.storage.session.set({ pendingSave: {
+            title: msg.title,
+            username: msg.username,
+            password: msg.password,
+            website: msg.website,
+            notes: msg.notes || '',
+            type: msg.type || 'password',
+            category: msg.category || 'Personal',
+            favorite: false
+          }});
+
+          // Show interactive notification asking user if they want to save
+          chrome.notifications.create('lootops-save-' + Date.now(), {
+            type: 'basic',
+            iconUrl: 'icons/icon48.png',
+            title: '🔐 New Login Detected',
+            message: `Save credentials for ${msg.website} to LootOps Vault?`,
+            buttons: [
+              { title: 'Save to Vault' },
+              { title: 'Not Now' }
+            ],
+            priority: 2,
+            requireInteraction: true
+          });
+          sendResponse({ success: true });
           break;
         }
 
@@ -344,21 +355,34 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 
 chrome.notifications.onButtonClicked.addListener(async (notifId, btnIdx) => {
   if (btnIdx === 0) {
-    // "Save" clicked
+    // "Save to Vault" clicked
     const { pendingSave } = await chrome.storage.session.get('pendingSave');
     if (pendingSave) {
       try {
-        await chrome.runtime.sendMessage({ type: 'SAVE_PASSWORD', payload: pendingSave });
+        const { vaultToken } = await getStoredAuth();
+        if (vaultToken) {
+          await apiRequest('POST', '/api/passwords', pendingSave, vaultToken);
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icons/icon48.png',
+            title: '✅ Password Saved!',
+            message: `Credentials for ${pendingSave.website} saved to your vault.`
+          });
+          await chrome.storage.session.remove('pendingSave');
+        }
+      } catch(e) {
+        console.error('Failed to save captured password', e);
         chrome.notifications.create({
           type: 'basic',
           iconUrl: 'icons/icon48.png',
-          title: 'Password Saved ✓',
-          message: `Credentials for ${pendingSave.website} saved to your vault.`
+          title: '❌ Save Failed',
+          message: 'Could not save to vault. Make sure you are logged in.'
         });
-      } catch(e) {
-        console.error('Failed to save captured password', e);
       }
     }
+  } else {
+    // "Not Now" — clear pending
+    await chrome.storage.session.remove('pendingSave');
   }
   chrome.notifications.clear(notifId);
 });
