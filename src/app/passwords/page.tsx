@@ -223,7 +223,7 @@ export default function PasswordsPage() {
         setPinError("Invalid authentication");
       }
     } catch (err: any) {
-      setPinError(err.message || "Authentication cancelled or failed");
+      setPinError(err.response?.data?.error || err.message || "Authentication cancelled or failed");
     } finally {
       setIsVerifyingPin(false);
     }
