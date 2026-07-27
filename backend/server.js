@@ -55,12 +55,32 @@ app.use(helmet({
 
 let dynamicOrigins = []; // Loaded later from db.json
 
-// Allow ALL origins — no domain restriction
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
-
+// Dynamic CORS middleware wrapper
+app.use((req, res, next) => {
+  const dbPath = path.join(__dirname, process.env.UPLOAD_PATH ? path.relative(__dirname, process.env.UPLOAD_PATH) : "uploads", "db.json");
+  let allowed = [];
+  try {
+    if (fs.existsSync(dbPath)) {
+      const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+      allowed = db.settings?.allowedOrigins || [];
+    }
+  } catch (e) { /* ignore */ }
+  
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (origin.startsWith('chrome-extension://') || origin.startsWith('file://')) return callback(null, true);
+      if (allowed.length === 0 || allowed.includes(origin) || allowed.includes(origin + "/")) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
+    allowedHeaders: ["Content-Type", "x-api-key", "Authorization", "x-mfa-token"]
+  })(req, res, next);
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -195,12 +215,7 @@ exec("ffmpeg -version", (err) => {
 // Required for express-rate-limit to work behind a reverse proxy
 app.set("trust proxy", 1);
 
-app.use(cors({
-  origin: true,
-  credentials: true,
-  methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
-  allowedHeaders: ["Content-Type", "x-api-key", "Authorization", "x-mfa-token"]
-}));
+// CORS is already handled dynamically at the top level middleware
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -5793,6 +5808,47 @@ app.get("/", (req, res) => {
     return res.redirect(`/api/github/callback?code=${req.query.code}`);
   }
   res.send("Storage Server Admin API Running 🔒");
+});
+
+// =====================
+// BACKEND ADMIN UI
+// =====================
+const adminTokens = new Set(); // In-memory token store for Backend UI
+
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "admin", "index.html"));
+});
+
+app.post("/api/admin/auth", (req, res) => {
+  const { apiKey } = req.body;
+  if (apiKey !== API_KEY) {
+    return res.status(401).json({ error: "Invalid API Key" });
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  adminTokens.add(token);
+  setTimeout(() => adminTokens.delete(token), 24 * 60 * 60 * 1000); // 24h expiry
+  res.json({ success: true, token });
+});
+
+const requireAdminUIAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const token = authHeader.split(" ")[1];
+  if (!adminTokens.has(token)) return res.status(401).json({ error: "Session expired, please login again" });
+  next();
+};
+
+app.get("/api/admin/settings", requireAdminUIAuth, (req, res) => {
+  const db = readDb();
+  res.json({ success: true, settings: db.settings });
+});
+
+app.post("/api/admin/settings", requireAdminUIAuth, (req, res) => {
+  const { settings } = req.body;
+  const db = readDb();
+  db.settings = { ...db.settings, ...settings };
+  writeDb(db);
+  res.json({ success: true, settings: db.settings });
 });
 
 // =====================
