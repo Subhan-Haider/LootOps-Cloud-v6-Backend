@@ -123,6 +123,8 @@ document.getElementById('login-password').addEventListener('keydown', (e) => {
 // OTP
 // =============================================
 
+let otpTimer = null;
+
 document.getElementById('btn-send-otp').addEventListener('click', async () => {
   const btn = document.getElementById('btn-send-otp');
   const errorEl = document.getElementById('otp-error');
@@ -132,8 +134,27 @@ document.getElementById('btn-send-otp').addEventListener('click', async () => {
   try {
     const res = await sendMsg({ type: 'SEND_OTP' });
     if (res.success) {
-      btn.style.display = 'none';
       document.getElementById('otp-input-section').classList.remove('hidden');
+      
+      // Change to ghost button for Resend
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-ghost');
+      
+      let timeLeft = 60;
+      if (otpTimer) clearInterval(otpTimer);
+      
+      btn.textContent = `Resend Code (${timeLeft}s)`;
+      otpTimer = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) {
+          clearInterval(otpTimer);
+          btn.disabled = false;
+          btn.textContent = 'Resend Code';
+        } else {
+          btn.textContent = `Resend Code (${timeLeft}s)`;
+        }
+      }, 1000);
+      
     } else {
       showError(errorEl, res.error || 'Failed to send OTP');
       btn.disabled = false;
