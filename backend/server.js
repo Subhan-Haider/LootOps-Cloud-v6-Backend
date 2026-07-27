@@ -5876,12 +5876,21 @@ app.post("/api/vault/email/send", requireAuth, async (req, res) => {
     const db = readDb();
     const email = req.user.email || req.user.uid;
     
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins
-    
     if (!db.mfaCodes) db.mfaCodes = {};
-    db.mfaCodes[email] = { code, expiresAt };
-    writeDb(db);
+    
+    let code;
+    let expiresAt;
+    
+    // Reuse existing unexpired OTP, otherwise generate a new one
+    if (db.mfaCodes[email] && db.mfaCodes[email].expiresAt > Date.now()) {
+      code = db.mfaCodes[email].code;
+      expiresAt = db.mfaCodes[email].expiresAt;
+    } else {
+      code = Math.floor(100000 + Math.random() * 900000).toString();
+      expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins
+      db.mfaCodes[email] = { code, expiresAt };
+      writeDb(db);
+    }
 
     const mailOptions = {
       from: process.env.SMTP_FROM || process.env.EMAIL_USER,
