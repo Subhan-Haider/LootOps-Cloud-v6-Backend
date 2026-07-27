@@ -17,8 +17,11 @@ const qrcode = require("qrcode");
 const os = require("os");
 const osUtils = require("os-utils");
 const cron = require("node-cron");
-const envPath = fs.existsSync(path.join(__dirname, ".env.local")) ? path.join(__dirname, ".env.local") : path.join(__dirname, "..", ".env.local");
-require("dotenv").config({ path: envPath });
+const envPathLocal = fs.existsSync(path.join(__dirname, ".env.local")) ? path.join(__dirname, ".env.local") : path.join(__dirname, "..", ".env.local");
+if (fs.existsSync(envPathLocal)) {
+  require("dotenv").config({ path: envPathLocal });
+}
+require("dotenv").config(); // Loads .env as a fallback
 const watchdog = require("./watchdog");
 const projectWatchdog = require("./project_watchdog");
 const exiftool = require("node-exiftool");
