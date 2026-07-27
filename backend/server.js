@@ -591,7 +591,7 @@ async function getAllFilesAsync(dirPath, db, arrayOfFiles = []) {
     const files = await fsPromises.readdir(dirPath);
 
     for (const file of files) {
-      if (file === "db.json" || file === "_vault" || file === "_thumbnails" || file === "_trash" || file === "node_modules" || file === ".next" || file === ".git" || file === "deployments" || file === "_backups" || file.startsWith("watchdog_") || file.endsWith(".tmp")) continue;
+      if (file === "db.json" || file === "notes.json" || file === "passwords.enc" || file === "_vault" || file === "_thumbnails" || file === "_trash" || file === "node_modules" || file === ".next" || file === ".git" || file === "deployments" || file === "_backups" || file.startsWith("watchdog_") || file.endsWith(".tmp")) continue;
 
       const fullPath = path.join(dirPath, file);
       
@@ -685,7 +685,7 @@ const getAllFiles = (dirPath, db, arrayOfFiles = []) => {
   if (!fs.existsSync(dirPath)) return arrayOfFiles;
   const files = fs.readdirSync(dirPath);
   files.forEach((file) => {
-    if (file === "db.json" || file === "_thumbnails" || file === "_trash") return;
+    if (file === "db.json" || file === "notes.json" || file === "passwords.enc" || file === "_thumbnails" || file === "_trash") return;
     const fullPath = path.join(dirPath, file);
     if (fs.statSync(fullPath).isDirectory()) {
       arrayOfFiles = getAllFiles(fullPath, db, arrayOfFiles);
@@ -827,7 +827,7 @@ app.post("/admin/rescan-files", requireAuth, async (req, res) => {
       if (!fs.existsSync(dirPath)) return;
       const entries = fs.readdirSync(dirPath);
       for (const entry of entries) {
-        if (entry === "db.json") continue;
+        if (entry === "db.json" || entry === "notes.json" || entry === "passwords.enc") continue;
         const fullPath = path.join(dirPath, entry);
         const stat = fs.statSync(fullPath);
 
@@ -1337,7 +1337,7 @@ app.get("/admin/stats", requireAuth, (req, res) => {
     try {
       const items = fs.readdirSync(UPLOAD_PATH);
       items.forEach(item => {
-        if (item === "_thumbnails" || item === "_trash" || item === "db.json") return;
+        if (item === "_thumbnails" || item === "_trash" || item === "db.json" || item === "notes.json" || item === "passwords.enc") return;
         const fullPath = path.join(UPLOAD_PATH, item);
         try {
           if (fs.statSync(fullPath).isDirectory()) {
@@ -1403,7 +1403,7 @@ app.post("/admin/generate-thumbnails", requireAuth, async (req, res) => {
   async function scanDir(dir) {
     const items = await fsPromises.readdir(dir).catch(() => []);
     for (const item of items) {
-      if (item === "_thumbnails" || item === "_trash" || item === "db.json") continue;
+      if (item === "_thumbnails" || item === "_trash" || item === "db.json" || item === "notes.json" || item === "passwords.enc") continue;
       const fullPath = path.join(dir, item);
       const stat = await fsPromises.stat(fullPath).catch(() => null);
       if (!stat) continue;
@@ -3719,7 +3719,7 @@ app.get("/admin/folder-tree", requireAuth, (req, res) => {
       if (!fs.existsSync(dirPath)) return;
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
       entries.forEach((entry) => {
-        if (entry.name === "db.json" || entry.name === "_thumbnails" || entry.name === "_trash") return;
+        if (entry.name === "db.json" || entry.name === "notes.json" || entry.name === "passwords.enc" || entry.name === "_thumbnails" || entry.name === "_trash") return;
         if (entry.isDirectory()) {
           const fullPath = path.join(dirPath, entry.name);
           const relativePath = path.relative(UPLOAD_PATH, fullPath).replace(/\\/g, "/");
@@ -4595,7 +4595,7 @@ async function createBackup() {
         // Fallback: Backup all files and folders under UPLOAD_PATH EXCEPT _thumbnails, _trash, and _backups
         const items = fs.readdirSync(UPLOAD_PATH);
         for (const item of items) {
-          if (item === "_thumbnails" || item === "_trash" || item === "_backups" || item === "db.json") {
+          if (item === "_thumbnails" || item === "_trash" || item === "_backups" || item === "db.json" || item === "notes.json" || item === "passwords.enc") {
             continue;
           }
           const itemPath = path.join(UPLOAD_PATH, item);
