@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 // Set EXPRESS_API_URL in Vercel env vars (without NEXT_PUBLIC_ prefix)
 const EXPRESS_API_URL = process.env.NODE_ENV === "development"
   ? "http://localhost:3000"
-  : "https://storage.lootops.me";
+  : "https://cloud.subhan.tech";
 
 const nextConfig: NextConfig = {
   images: {
