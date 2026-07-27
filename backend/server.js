@@ -227,7 +227,7 @@ const DB_PATH = path.join(UPLOAD_PATH, "db.json");
 
 function readDb() {
   const defaultDb = {
-    files: {}, logs: [], shares: {}, users: {}, security: {}, invites: {}, folders: {}, trash: {}, vaults: {}, webhookUrl: "", mfaCodes: {}, analytics: { totalUploads: 0, totalDownloads: 0, dailyStats: {} }, settings: { allowedOrigins: [], allowedEmails: ["setupg98@gmail.com", "support@subhan.tech"], notificationEmails: ["support@subhan.tech"], notificationsEnabled: true, customBaseUrl: "" }
+    files: {}, logs: [], shares: {}, users: {}, security: {}, invites: {}, folders: {}, trash: {}, vaults: {}, webhookUrl: "", mfaCodes: {}, analytics: { totalUploads: 0, totalDownloads: 0, dailyStats: {} }, settings: { allowedOrigins: ["https://lootops-cloud.subhan.tech", "https://lootops-cloud.subhan.tech/"], allowedEmails: ["setupg98@gmail.com", "support@subhan.tech"], notificationEmails: ["support@subhan.tech"], notificationsEnabled: true, customBaseUrl: "" }
   };
   if (!fs.existsSync(DB_PATH)) {
     return defaultDb;
@@ -250,7 +250,7 @@ function readDb() {
       delete data.settings.notificationsEnabled;
     }
     
-    if (!data.settings) data.settings = { allowedOrigins: [], allowedEmails: ["setupg98@gmail.com", "support@subhan.tech"], notificationEmails: ["support@subhan.tech"], emailNotificationsEnabled: true, discordNotificationsEnabled: true, customBaseUrl: "" };
+    if (!data.settings) data.settings = { allowedOrigins: ["https://lootops-cloud.subhan.tech", "https://lootops-cloud.subhan.tech/"], allowedEmails: ["setupg98@gmail.com", "support@subhan.tech"], notificationEmails: ["support@subhan.tech"], emailNotificationsEnabled: true, discordNotificationsEnabled: true, customBaseUrl: "" };
     if (!data.settings.allowedEmails) data.settings.allowedEmails = ["setupg98@gmail.com", "support@subhan.tech"];
     if (!data.settings.notificationEmails) data.settings.notificationEmails = ["support@subhan.tech"];
     if (data.settings.emailNotificationsEnabled === undefined) data.settings.emailNotificationsEnabled = true;
@@ -3788,7 +3788,7 @@ app.get("/admin/preview-meta/:folder/:name", requireAuth, (req, res) => {
 // =====================
 app.get("/admin/settings", requireAuth, (req, res) => {
   const db = readDb();
-  res.json(db.settings || { allowedOrigins: [] });
+  res.json(db.settings || { allowedOrigins: ["https://lootops-cloud.subhan.tech", "https://lootops-cloud.subhan.tech/"] });
 });
 
 app.post("/admin/settings/origins", requireAuth, (req, res) => {

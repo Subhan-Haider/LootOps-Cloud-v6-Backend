@@ -2,8 +2,8 @@ import type { NextConfig } from "next";
 
 // The Express API server URL (only used server-side for rewrites, never exposed to browser)
 // Set EXPRESS_API_URL in Vercel env vars (without NEXT_PUBLIC_ prefix)
-const EXPRESS_API_URL = process.env.NODE_ENV === "development" 
-  ? "http://localhost:5000" 
+const EXPRESS_API_URL = process.env.NODE_ENV === "development"
+  ? "http://localhost:3000"
   : "https://storage.lootops.me";
 
 const nextConfig: NextConfig = {
@@ -30,9 +30,14 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
       {
+        protocol: "https",
+        hostname: "lootops-cloud.subhan.tech",
+        pathname: "/**",
+      },
+      {
         protocol: "http",
         hostname: "localhost",
-        port: "5000",
+        port: "3000",
         pathname: "/**",
       },
     ],
@@ -49,8 +54,8 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", destination: `${EXPRESS_API_URL}/admin/:path*` },
       // File upload
       { source: "/upload", destination: `${EXPRESS_API_URL}/upload` },
-       // File serving & downloads — excluded here, handled via redirects() below
-       // so the browser talks directly to the backend (required for video Range requests)
+      // File serving & downloads — excluded here, handled via redirects() below
+      // so the browser talks directly to the backend (required for video Range requests)
       // Thumbnails
       { source: "/thumbnails/:path*", destination: `${EXPRESS_API_URL}/thumbnails/:path*` },
       // 2FA / Auth endpoints
