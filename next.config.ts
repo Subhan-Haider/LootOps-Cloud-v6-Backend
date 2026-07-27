@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
+        hostname: "cloud.subhan.tech",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
         hostname: "storage.lootops.me",
         pathname: "/**",
       },
