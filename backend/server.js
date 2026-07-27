@@ -4200,10 +4200,9 @@ app.post("/auth/verify-email", requireUserAuth, async (req, res) => {
 app.get("/auth/me", requireUserAuth, async (req, res) => {
   try {
     const dbData = readDb();
-      if (!dbData.users) dbData.users = {};
-      let profileData = dbData.users[req.user.uid] || { email: req.user.email, name: req.user.name || "" };
+    if (!dbData.users) dbData.users = {};
+    let profileData = dbData.users[req.user.uid] || { email: req.user.email, name: req.user.name || "" };
     
-    const dbData = readDb();
     const userRecord = dbData.users[req.user.email];
     
     // Inject true RBAC role and permissions from db.json into the profile response
